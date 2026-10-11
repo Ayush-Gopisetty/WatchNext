@@ -99,7 +99,7 @@ a.cast { color:inherit; } a.cast:hover b { color:var(--accent); }
 .bigicon { font-size:40px; } .state .actions { justify-content:center; }
 
 /* ---- page transition ---- */
-.page { animation:pagein .22s ease both; }
+.page { animation:pagein .22s ease backwards; }
 @keyframes pagein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 @keyframes pop { 50% { transform:scale(1.25); } }
 .chk.on { animation:pop .25s; }

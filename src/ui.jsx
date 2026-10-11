@@ -1,4 +1,5 @@
 import { Component, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { IMG, prefetch } from './api';
 import { useLibrary, actions } from './store';
 
@@ -123,7 +124,7 @@ export function Trailer({ video, fallbackNote, onClose }) {
     addEventListener('keydown', f);
     return () => removeEventListener('keydown', f);
   }, [onClose]);
-  return (
+  return createPortal(
     <div className="modal" onClick={onClose}>
       <div className="player" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose} aria-label="Close">✕</button>
@@ -137,7 +138,8 @@ export function Trailer({ video, fallbackNote, onClose }) {
         </div>
         {fallbackNote && <p className="note">{fallbackNote}</p>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
