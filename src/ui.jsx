@@ -109,3 +109,16 @@ export const Err = ({ error }) =>
   error.message === 'NO_BACKEND'
     ? <div className="empty">Backend not configured. Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env and restart.</div>
     : <div className="empty">Something went wrong: {error.message}</div>;
+
+// Follows the system theme until the user picks one; the choice is remembered.
+const systemDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+export function ThemeToggle() {
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || (systemDark() ? 'dark' : 'light'));
+  const flip = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch {}
+    setTheme(next);
+  };
+  return <button className="themebtn" onClick={flip} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} aria-label="Toggle theme">{theme === 'dark' ? '☀' : '☾'}</button>;
+}

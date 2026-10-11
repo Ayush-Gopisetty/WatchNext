@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useHash } from './ui';
+import { useHash, ThemeToggle } from './ui';
 import { Home, Search, Library, ForYou, Settings } from './pages';
 import Detail from './Detail';
 import Auth from './Auth';
@@ -34,6 +34,7 @@ export default function App() {
         <form onSubmit={(e) => { e.preventDefault(); q.trim() && (location.hash = `#/search/${encodeURIComponent(q.trim())}`); }}>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search movies, shows, anime…" />
         </form>
+        <ThemeToggle />
         <Auth />
       </header>
       <main>{page}</main>

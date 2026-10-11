@@ -12,7 +12,7 @@ export default function Detail({ type, id }) {
   const me = lib.items[d.key] || {};
   return (
     <>
-      <div className="hero" style={{ backgroundImage: d.backdrop ? `linear-gradient(transparent, var(--bg)), url(${IMG(d.backdrop, 'w1280')})` : undefined }}>
+      <div className="hero" style={{ backgroundImage: d.backdrop ? `linear-gradient(rgba(10,10,14,.5), rgba(10,10,14,.92)), url(${IMG(d.backdrop, 'w1280')})` : undefined }}>
         <img className="hposter" src={IMG(d.poster, 'w342')} alt="" />
         <div className="info">
           <h1>{d.title} <small>{d.year}</small></h1>
