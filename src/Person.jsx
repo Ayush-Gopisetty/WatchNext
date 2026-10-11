@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { person, IMG } from './api';
-import { Row, Err, useAsync } from './ui';
+import { Row, Err, useAsync, SkeletonHero, SkeletonRow } from './ui';
 import { useLibrary, isStarted } from './store';
 import { GENRES } from './recommend';
 
@@ -14,13 +14,13 @@ const age = (b, d) => {
 };
 
 export default function Person({ id }) {
-  const { data: p, error, loading } = useAsync(() => person(id), [id]);
+  const { data: p, error, loading, retry } = useAsync(() => person(id), [id]);
   const { items } = useLibrary();
   const [kind, setKind] = useState('all');
   const [appearances, setAppearances] = useState(false);
   const [more, setMore] = useState(false);
-  if (error) return <Err error={error} />;
-  if (loading) return <div className="empty">Loading…</div>;
+  if (error) return <Err error={error} onRetry={retry} />;
+  if (loading) return <><SkeletonHero /><section className="row"><div className="sk line title" /><SkeletonRow /></section></>;
 
   const roles = p.cast.filter((c) => appearances || !c.appearance);
   const shown = roles

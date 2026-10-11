@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useHash, ThemeToggle } from './ui';
+import { useHash, ThemeToggle, NotFound, ErrorBoundary } from './ui';
 import { Home, Search, Library, ForYou, Settings } from './pages';
 import Detail from './Detail';
 import Auth from './Auth';
@@ -19,7 +19,8 @@ export default function App() {
   else if (parts[0] === 'reset') page = <ResetPassword />;
   else if (parts[0] === 'login') page = <Login />;
   else if (parts[0] === 'settings') page = <Settings />;
-  else page = <Home />;
+  else if (parts[0] === '' || parts[0].startsWith('access_token')) page = <Home />;
+  else page = <NotFound />;
   const on = (p) => (parts[0] === p ? 'on' : '');
   return (
     <>
@@ -37,7 +38,7 @@ export default function App() {
         <ThemeToggle />
         <Auth />
       </header>
-      <main>{page}</main>
+      <main><ErrorBoundary key={h}>{page}</ErrorBoundary></main>
       <footer>This product uses the TMDB API but is not endorsed or certified by <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">TMDB</a>.</footer>
     </>
   );

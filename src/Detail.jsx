@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { details, season, episodeVideos, IMG } from './api';
-import { Row, Trailer, Stars, Err, useAsync } from './ui';
+import { Row, Trailer, Stars, Err, useAsync, SkeletonHero, SkeletonEpisodes } from './ui';
 import { useLibrary, actions, epKey, epCount } from './store';
 
 export default function Detail({ type, id }) {
-  const { data: d, error, loading } = useAsync(() => details(type, id), [type, id]);
+  const { data: d, error, loading, retry } = useAsync(() => details(type, id), [type, id]);
   const lib = useLibrary();
   const [trailer, setTrailer] = useState(null);
-  if (error) return <Err error={error} />;
-  if (loading) return <div className="empty">Loading…</div>;
+  if (error) return <Err error={error} onRetry={retry} />;
+  if (loading) return <SkeletonHero />;
   const me = lib.items[d.key] || {};
   return (
     <>
@@ -45,7 +45,7 @@ function Seasons({ d, me, onPlay, shield }) {
     const eps = Object.keys(me.eps || {}).map((k) => +k.split('x')[0]);
     return eps.length ? Math.max(...eps) : d.seasons[0]?.season_number ?? 1;
   });
-  const { data, error, loading } = useAsync(() => season(d.id, sn), [d.id, sn]);
+  const { data, error, loading, retry } = useAsync(() => season(d.id, sn), [d.id, sn]);
   const watched = (s, e) => !!me.eps?.[epKey(s, e)];
 
   const play = async (ep) => {
@@ -64,7 +64,7 @@ function Seasons({ d, me, onPlay, shield }) {
         <button key={s.season_number} className={sn === s.season_number ? 'on' : ''} onClick={() => setSn(s.season_number)}>
           {s.name.length > 12 ? `S${s.season_number}` : s.name}
         </button>))}</div>
-      {error ? <Err error={error} /> : loading ? <div className="empty">Loading episodes…</div> : (
+      {error ? <Err error={error} onRetry={retry} /> : loading ? <SkeletonEpisodes /> : (
         <>
           <div className="bulk">
             <button className="link" onClick={() => actions.setEpisodes(d, data.episodes.map((e) => [sn, e.episode_number]), true)}>Mark season watched</button>

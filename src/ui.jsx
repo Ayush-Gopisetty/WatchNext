@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState } from 'react';
 import { IMG } from './api';
 
 export function useHash() {
@@ -13,18 +13,20 @@ export function useHash() {
 
 export function useAsync(fn, deps) {
   const [s, setS] = useState({ loading: true });
+  const [n, setN] = useState(0);
   useEffect(() => {
     let live = true;
     setS({ loading: true });
     Promise.resolve().then(fn).then((data) => live && setS({ data }), (error) => live && setS({ error }));
     return () => { live = false; };
-  }, deps); // eslint-disable-line
-  return s;
+  }, [...deps, n]); // eslint-disable-line
+  return { ...s, retry: () => setN((x) => x + 1) };
 }
 
 // Paged list: fetchPage(n) -> array. Resets when deps change; loadMore() appends the next page.
 export function usePaged(fetchPage, deps) {
   const [s, setS] = useState({ items: [], page: 0, loading: true, more: false });
+  const [n, setN] = useState(0);
   const run = (page, reset) => {
     setS((p) => ({ ...p, loading: true, error: null, ...(reset ? { items: [], page: 0 } : {}) }));
     return fetchPage(page).then(
@@ -45,8 +47,8 @@ export function usePaged(fetchPage, deps) {
     );
     setS({ items: [], page: 0, loading: true, more: false });
     return () => { live = false; };
-  }, deps); // eslint-disable-line
-  return { ...s, loadMore: () => run(s.page + 1, false) };
+  }, [...deps, n]); // eslint-disable-line
+  return { ...s, loadMore: () => run(s.page + 1, false), retry: () => setN((x) => x + 1) };
 }
 
 export const LoadMore = ({ paged }) =>
@@ -105,10 +107,88 @@ export const Stars = ({ value = 0, onChange }) => (
   </span>
 );
 
-export const Err = ({ error }) =>
-  error.message === 'NO_BACKEND'
-    ? <div className="empty">Backend not configured. Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env and restart.</div>
-    : <div className="empty">Something went wrong: {error.message}</div>;
+// Friendly error panel. 404s get the "not found" page; network/server problems get a retry button.
+export function Err({ error, onRetry }) {
+  const m = error?.message || '';
+  if (m === 'NO_BACKEND')
+    return <div className="state"><h2>Backend not configured</h2><p>Fill in VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env (or your host's environment variables) and rebuild.</p></div>;
+  if (/404/.test(m)) return <NotFound what="title" />;
+  const offline = /fetch|network|send a request|Failed/i.test(m) || (typeof navigator !== 'undefined' && !navigator.onLine);
+  return (
+    <div className="state">
+      <div className="bigicon">{offline ? '📡' : '⚠️'}</div>
+      <h2>{offline ? "Can't reach the server" : 'Something went wrong'}</h2>
+      <p>{offline ? 'Check your internet connection and try again.' : 'We hit a problem loading this. It may be temporary.'}</p>
+      <div className="actions">
+        {onRetry && <button className="btn" onClick={onRetry}>Try again</button>}
+        <a className="btn ghost" href="#/">Go home</a>
+      </div>
+      {m && !offline && <small className="muted">{m}</small>}
+    </div>
+  );
+}
+
+export const NotFound = ({ what = 'page' }) => (
+  <div className="state">
+    <div className="bigicon">🎬</div>
+    <h1>404</h1>
+    <h2>We couldn't find that {what}</h2>
+    <p>It may have been removed, or the link might be wrong.</p>
+    <div className="actions"><a className="btn" href="#/">Back to Discover</a></div>
+  </div>
+);
+
+// Crash fallback so a bug shows a page instead of a blank screen.
+export class ErrorBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    return this.state.failed ? (
+      <div className="state">
+        <div className="bigicon">💥</div>
+        <h2>The app hit an unexpected error</h2>
+        <p>Reloading usually fixes it.</p>
+        <button className="btn" onClick={() => location.reload()}>Reload</button>
+      </div>
+    ) : this.props.children;
+  }
+}
+
+// ---- Loading skeletons (shapes match the real content so the page doesn't jump) ----
+export const SkeletonGrid = ({ n = 12 }) => (
+  <div className="grid" aria-busy="true" aria-label="Loading">
+    {Array.from({ length: n }, (_, i) => (
+      <div key={i}><div className="poster sk" /><div className="sk line" style={{ width: '80%', marginTop: 8 }} /><div className="sk line short" /></div>
+    ))}
+  </div>
+);
+export const SkeletonRow = ({ n = 8 }) => (
+  <div className="strip" aria-busy="true">{Array.from({ length: n }, (_, i) => <div key={i} className="card"><div className="poster sk" /><div className="sk line" style={{ marginTop: 8 }} /></div>)}</div>
+);
+export const SkeletonHero = () => (
+  <div className="hero" aria-busy="true" aria-label="Loading">
+    <div className="hposter sk" />
+    <div className="info">
+      <div className="sk line title" /><div className="sk line short" />
+      <div className="sk line" /><div className="sk line" /><div className="sk line" style={{ width: '60%' }} />
+      <div className="actions"><div className="sk btnsk" /><div className="sk btnsk" /></div>
+    </div>
+  </div>
+);
+export const SkeletonEpisodes = ({ n = 5 }) => (
+  <div aria-busy="true" aria-label="Loading episodes">
+    {Array.from({ length: n }, (_, i) => (
+      <div key={i} className="ep"><div className="still sk" /><div className="epbody"><div className="sk line" style={{ width: '45%' }} /><div className="sk line" /><div className="sk line" style={{ width: '70%' }} /></div></div>
+    ))}
+  </div>
+);
+export const SkeletonRecs = ({ n = 4 }) => (
+  <div className="recs" aria-busy="true" aria-label="Loading recommendations">
+    {Array.from({ length: n }, (_, i) => (
+      <div key={i} className="rec"><div className="sk" style={{ width: 100, height: 150, flex: 'none' }} /><div style={{ flex: 1 }}><div className="sk line short" /><div className="sk line title" /><div className="sk line" /><div className="sk line" style={{ width: '80%' }} /></div></div>
+    ))}
+  </div>
+);
 
 // Follows the system theme until the user picks one; the choice is remembered.
 const systemDark = () => matchMedia('(prefers-color-scheme: dark)').matches;

@@ -83,3 +83,14 @@ a.cast { color:inherit; } a.cast:hover b { color:var(--accent); }
 .themebtn { background:none; border:1px solid var(--line); border-radius:8px; width:36px; height:34px; font-size:16px; line-height:1; color:var(--text); }
 .themebtn:hover { background:var(--panel); }
 .btn, .badge { color:#fff; } .btn.ghost { color:var(--text); } .btn.on { color:var(--ok); }
+
+/* loading skeletons */
+.sk { background:linear-gradient(90deg,var(--panel) 25%,var(--line) 37%,var(--panel) 63%); background-size:400% 100%; animation:shimmer 1.4s ease infinite; border-radius:8px; }
+.sk.line { height:14px; margin:8px 0; } .sk.line.short { width:45%; } .sk.line.title { height:28px; width:55%; margin:0 0 14px; } .sk.btnsk { width:110px; height:38px; }
+.poster.sk { aspect-ratio:2/3; width:100%; } .hposter.sk { box-shadow:none; }
+@keyframes shimmer { 0% { background-position:100% 50%; } 100% { background-position:0 50%; } }
+@media (prefers-reduced-motion: reduce) { .sk { animation:none; } }
+/* error and 404 states */
+.state { max-width:460px; margin:56px auto; text-align:center; display:grid; gap:8px; justify-items:center; }
+.state h1 { font-size:64px; line-height:1; margin:0; color:var(--accent); } .state p { color:var(--muted); margin:0; }
+.bigicon { font-size:40px; } .state .actions { justify-content:center; }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { browse, search, IMG } from './api';
-import { Card, Row, Err, useAsync, usePaged, LoadMore } from './ui';
+import { Card, Row, Err, useAsync, usePaged, LoadMore, SkeletonGrid, SkeletonRecs } from './ui';
 import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
 import { recommend, tasteProfile } from './recommend';
 
@@ -17,7 +17,7 @@ export function Home() {
     <>
       <Row title="Continue watching" items={resume} badge={(i) => `${epCount(i)}/${i.total || '?'}`} />
       <div className="tabs">{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {paged.error && !paged.items.length ? <Err error={paged.error} /> : !paged.items.length ? <div className="empty">Loading…</div> : (
+      {paged.error && !paged.items.length ? <Err error={paged.error} onRetry={paged.retry} /> : !paged.items.length ? <SkeletonGrid /> : (
         <>
           <div className="grid">{paged.items.map((it) => <Card key={it.key} it={it} />)}</div>
           <LoadMore paged={paged} />
@@ -33,14 +33,14 @@ export function Search({ q }) {
   return (
     <>
       <h2>Results for “{q}”</h2>
-      {paged.error && !data.length ? <Err error={paged.error} /> : paged.loading && !data.length ? <div className="empty">Searching…</div> :
+      {paged.error && !data.length ? <Err error={paged.error} onRetry={paged.retry} /> : paged.loading && !data.length ? <SkeletonGrid n={10} /> :
         data.length ? (
           <>
             <Row title="People" items={data.filter((x) => x.type === 'person').slice(0, 12)} />
             <div className="grid">{data.filter((x) => x.type !== 'person').map((it) => <Card key={it.key} it={it} />)}</div>
             <LoadMore paged={paged} />
           </>
-        ) : <div className="empty">Nothing found.</div>}
+        ) : <div className="state"><div className="bigicon">🔍</div><h2>No results for “{q}”</h2><p>Check the spelling or try a different title, actor or keyword.</p></div>}
     </>
   );
 }
@@ -76,9 +76,9 @@ export function ForYou() {
   const lib = useLibrary();
   const [kind, setKind] = useState('all');
   const sig = Object.values(lib.items).map((i) => `${i.key}${i.rating || ''}${isStarted(i) ? 1 : 0}${isFinished(i) ? 1 : 0}`).join();
-  const { data, error, loading } = useAsync(() => recommend(lib), [sig]);
+  const { data, error, loading, retry } = useAsync(() => recommend(lib), [sig]);
   const profile = data?.profile || tasteProfile(Object.values(lib.items));
-  if (error) return <Err error={error} />;
+  if (error) return <Err error={error} onRetry={retry} />;
   const recs = (data?.recs || []).filter((r) => kind === 'all' || (kind === 'anime' ? r.anime : kind === 'movie' ? r.type === 'movie' : r.type === 'tv' && !r.anime));
   return (
     <>
@@ -89,7 +89,7 @@ export function ForYou() {
         )) : <p className="muted">Watch or rate a few things and your taste profile builds itself here.</p>}
       </section>
       <div className="tabs">{[['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
-      {loading ? <div className="empty">Working out what you'd love…</div> : !recs.length ? <div className="empty">Mark a few titles as watched (and rate them ★) to get recommendations.</div> : (
+      {loading ? <SkeletonRecs /> : !recs.length ? <div className="empty">Mark a few titles as watched (and rate them ★) to get recommendations.</div> : (
         <div className="recs">
           {recs.map((r, i) => (
             <a key={r.key} className="rec" href={`#/title/${r.type}/${r.id}`}>
