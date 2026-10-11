@@ -62,3 +62,16 @@ footer { text-align:center; color:var(--muted); font-size:12px; padding:32px 16p
 .or::before, .or::after { content:''; flex:1; height:1px; background:var(--line); }
 .loginerr { color:#ff8b8b; } .sent { background:var(--panel); padding:14px; border-radius:10px; } .small { font-size:12px; }
 a.btn { display:inline-block; }
+.hero.person { background:var(--panel); border-radius:14px; margin:0 0 8px; }
+.facts { display:grid; grid-template-columns:max-content 1fr; gap:4px 16px; margin:12px 0; font-size:14px; } .facts dt { color:var(--muted); } .facts dd { margin:0; } .facts .seen { color:#4ade80; }
+.bio { white-space:pre-line; color:#c5c8d4; max-width:70ch; margin:8px 0 4px; } .bio.clamp { display:-webkit-box; -webkit-line-clamp:5; -webkit-box-orient:vertical; overflow:hidden; }
+.tabs .check { display:flex; gap:6px; align-items:center; margin-left:auto; color:var(--muted); } .tabs .check input { width:auto; }
+.yearblock { display:flex; gap:20px; padding:12px 0; border-top:1px solid var(--line); } .year { width:56px; flex:none; font-weight:600; color:var(--muted); }
+.credits { flex:1; display:grid; gap:10px; min-width:0; }
+.credit { display:flex; gap:12px; align-items:center; } .credit:hover b { color:var(--accent); }
+.credit img, .credit .noimg { width:42px; height:63px; object-fit:cover; border-radius:6px; flex:none; min-height:0; }
+.credit > div { flex:1; min-width:0; } .credit b, .credit span, .credit small { display:block; } .credit span { color:#c5c8d4; font-size:13px; } .credit small { color:var(--muted); font-size:12px; }
+.tag { font-size:11px; padding:2px 8px; border-radius:99px; background:#1f3d2b; color:#4ade80; white-space:nowrap; } .tag.wl { background:var(--line); color:var(--muted); }
+.crewjob h3 { font-size:15px; margin:14px 0 8px; }
+a.cast { color:inherit; } a.cast:hover b { color:var(--accent); }
+.more { text-align:center; margin:28px 0; }

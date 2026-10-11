@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { browse, search, trending, IMG } from './api';
-import { Card, Row, Err, useAsync } from './ui';
+import { browse, search, IMG } from './api';
+import { Card, Row, Err, useAsync, usePaged, LoadMore } from './ui';
 import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
 import { recommend, tasteProfile } from './recommend';
 
@@ -9,7 +9,7 @@ const TABS = [['all', 'Trending'], ['movie', 'Movies'], ['tv', 'Shows'], ['anime
 export function Home() {
   const lib = useLibrary();
   const [tab, setTab] = useState('all');
-  const { data, error, loading } = useAsync(() => (tab === 'all' ? trending() : browse(tab)), [tab]);
+  const paged = usePaged((n) => browse(tab, n), [tab]);
   const resume = Object.values(lib.items)
     .filter((i) => i.type === 'tv' && isStarted(i) && !isFinished(i))
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -17,18 +17,30 @@ export function Home() {
     <>
       <Row title="Continue watching" items={resume} badge={(i) => `${epCount(i)}/${i.total || '?'}`} />
       <div className="tabs">{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {error ? <Err error={error} /> : loading ? <div className="empty">Loading…</div> : <div className="grid">{data.map((it) => <Card key={it.key} it={it} />)}</div>}
+      {paged.error && !paged.items.length ? <Err error={paged.error} /> : !paged.items.length ? <div className="empty">Loading…</div> : (
+        <>
+          <div className="grid">{paged.items.map((it) => <Card key={it.key} it={it} />)}</div>
+          <LoadMore paged={paged} />
+        </>
+      )}
     </>
   );
 }
 
 export function Search({ q }) {
-  const { data, error, loading } = useAsync(() => search(q), [q]);
+  const paged = usePaged((n) => search(q, n), [q]);
+  const data = paged.items;
   return (
     <>
       <h2>Results for “{q}”</h2>
-      {error ? <Err error={error} /> : loading ? <div className="empty">Searching…</div> :
-        data.length ? <div className="grid">{data.map((it) => <Card key={it.key} it={it} />)}</div> : <div className="empty">Nothing found.</div>}
+      {paged.error && !data.length ? <Err error={paged.error} /> : paged.loading && !data.length ? <div className="empty">Searching…</div> :
+        data.length ? (
+          <>
+            <Row title="People" items={data.filter((x) => x.type === 'person').slice(0, 12)} />
+            <div className="grid">{data.filter((x) => x.type !== 'person').map((it) => <Card key={it.key} it={it} />)}</div>
+            <LoadMore paged={paged} />
+          </>
+        ) : <div className="empty">Nothing found.</div>}
     </>
   );
 }

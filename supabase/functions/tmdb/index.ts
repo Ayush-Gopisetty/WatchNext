@@ -6,6 +6,7 @@ const ALLOW = [
   /^\/(movie|tv)\/(popular|top_rated)$/,
   /^\/search\/multi$/,
   /^\/discover\/tv$/,
+  /^\/person\/\d+$/,
   /^\/(movie|tv)\/\d+$/,
   /^\/tv\/\d+\/season\/\d+$/,
   /^\/tv\/\d+\/season\/\d+\/episode\/\d+\/videos$/,

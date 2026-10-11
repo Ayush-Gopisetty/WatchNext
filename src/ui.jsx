@@ -22,15 +22,47 @@ export function useAsync(fn, deps) {
   return s;
 }
 
+// Paged list: fetchPage(n) -> array. Resets when deps change; loadMore() appends the next page.
+export function usePaged(fetchPage, deps) {
+  const [s, setS] = useState({ items: [], page: 0, loading: true, more: false });
+  const run = (page, reset) => {
+    setS((p) => ({ ...p, loading: true, error: null, ...(reset ? { items: [], page: 0 } : {}) }));
+    return fetchPage(page).then(
+      (r) => setS((p) => {
+        const seen = new Set(p.items.map((x) => x.key));
+        const items = [...p.items, ...r.filter((x) => !seen.has(x.key))];
+        return { items, page, loading: false, more: r.length > 0 && page < 500 };
+      }),
+      (error) => setS((p) => ({ ...p, loading: false, error })),
+    );
+  };
+  useEffect(() => {
+    let live = true;
+    const stale = () => !live;
+    fetchPage(1).then(
+      (r) => !stale() && setS({ items: r, page: 1, loading: false, more: r.length > 0 }),
+      (error) => !stale() && setS({ items: [], page: 0, loading: false, more: false, error }),
+    );
+    setS({ items: [], page: 0, loading: true, more: false });
+    return () => { live = false; };
+  }, deps); // eslint-disable-line
+  return { ...s, loadMore: () => run(s.page + 1, false) };
+}
+
+export const LoadMore = ({ paged }) =>
+  paged.items.length && paged.more ? (
+    <div className="more"><button className="btn ghost" disabled={paged.loading} onClick={paged.loadMore}>{paged.loading ? 'Loading…' : 'Load more'}</button></div>
+  ) : null;
+
 export function Card({ it, badge, sub }) {
   return (
-    <a className="card" href={`#/title/${it.type}/${it.id}`}>
+    <a className="card" href={it.type === 'person' ? `#/person/${it.id}` : `#/title/${it.type}/${it.id}`}>
       <div className="poster">
         {it.poster ? <img loading="lazy" src={IMG(it.poster)} alt="" /> : <div className="noimg">{it.title}</div>}
         {badge && <span className="badge">{badge}</span>}
       </div>
       <div className="ctitle">{it.title}</div>
-      <div className="csub">{sub ?? [it.year, it.anime ? 'Anime' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · ')}</div>
+      <div className="csub">{sub ?? (it.type === 'person' ? it.dept : [it.year, it.anime ? 'Anime' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '))}</div>
     </a>
   );
 }

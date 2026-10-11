@@ -31,7 +31,7 @@ export default function Detail({ type, id }) {
       </div>
       {d.type === 'tv' && <Seasons d={d} me={me} onPlay={setTrailer} shield={lib.spoilerShield} />}
       {d.cast.length > 0 && <section className="row"><h2>Cast</h2><div className="strip">{d.cast.map((c) => (
-        <div key={c.id} className="cast">{c.profile_path ? <img src={IMG(c.profile_path, 'w185')} alt="" /> : <div className="noimg" />}<b>{c.name}</b><span>{c.character}</span></div>
+        <a key={c.id} className="cast" href={`#/person/${c.id}`}>{c.profile_path ? <img src={IMG(c.profile_path, 'w185')} alt="" /> : <div className="noimg" />}<b>{c.name}</b><span>{c.character}</span></a>
       ))}</div></section>}
       <Row title="More like this" items={d.recs.length ? d.recs : d.similar} />
       {trailer && <Trailer {...trailer} onClose={() => setTrailer(null)} />}

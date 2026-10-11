@@ -3,6 +3,7 @@ import { useHash } from './ui';
 import { Home, Search, Library, ForYou, Settings } from './pages';
 import Detail from './Detail';
 import Auth from './Auth';
+import Person from './Person';
 import Login, { ResetPassword } from './Login';
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
   const parts = h.replace(/^#\/?/, '').split('/');
   let page;
   if (parts[0] === 'title') page = <Detail key={h} type={parts[1]} id={parts[2]} />;
+  else if (parts[0] === 'person') page = <Person key={h} id={parts[1]} />;
   else if (parts[0] === 'search') page = <Search q={decodeURIComponent(parts[1] || '')} />;
   else if (parts[0] === 'library') page = <Library />;
   else if (parts[0] === 'foryou') page = <ForYou />;
