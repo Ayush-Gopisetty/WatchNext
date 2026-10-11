@@ -13,6 +13,11 @@ const set = (patch) => {
   try { localStorage.setItem(LS, JSON.stringify(state)); } catch {}
   subs.forEach((f) => f());
 };
+// Another tab changed the list: pick it up (no write, so no ping-pong).
+addEventListener('storage', (e) => {
+  if (e.key !== LS || !e.newValue) return;
+  try { state = { ...state, ...JSON.parse(e.newValue) }; subs.forEach((f) => f()); } catch {}
+});
 const useStore = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), () => state);
 
 export const epKey = (s, e) => `${s}x${e}`;
@@ -44,6 +49,7 @@ function push(it) {
 // On sign-in: merge cloud + local by newest updatedAt, then push anything local that's newer.
 export async function signedIn(user) {
   userId = user.id;
+  startRealtime(user.id);
   const { data, error } = await supabase.from('library_items').select('data');
   if (error) return console.warn('sync failed', error.message);
   const merged = { ...state.items };
@@ -58,7 +64,28 @@ export async function signedIn(user) {
   });
 }
 // On sign-out wipe the local copy so the next person on this browser doesn't inherit it.
-export function signedOut() { userId = null; set({ items: {} }); }
+export function signedOut() { userId = null; stopRealtime(); set({ items: {} }); }
+
+// Live updates: changes made on another device arrive here within a moment.
+let channel = null;
+function stopRealtime() { if (channel) { supabase.removeChannel(channel); channel = null; } }
+function startRealtime(uid) {
+  stopRealtime();
+  channel = supabase.channel(`library-${uid}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'library_items', filter: `user_id=eq.${uid}` }, (p) => {
+      if (p.eventType === 'DELETE') {
+        const k = p.old?.key;
+        if (k && state.items[k]) { const items = { ...state.items }; delete items[k]; set({ items }); }
+        return;
+      }
+      const remote = p.new?.data;
+      if (!remote) return;
+      const local = state.items[remote.key];
+      // our own writes echo back with the same updatedAt, so only strictly newer data is applied
+      if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) set({ items: { ...state.items, [remote.key]: remote } });
+    })
+    .subscribe();
+}
 
 export const actions = {
   toggleMovie(item) {

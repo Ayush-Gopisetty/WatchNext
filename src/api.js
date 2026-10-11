@@ -126,3 +126,6 @@ export async function person(id) {
     cast, crew,
   };
 }
+
+// Warm the cache when the user hovers a card, so the page opens instantly.
+export const prefetch = (it) => { (it.type === 'person' ? person(it.id) : details(it.type, it.id)).catch(() => {}); };

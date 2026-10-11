@@ -1,5 +1,6 @@
-import { Component, useEffect, useState } from 'react';
-import { IMG } from './api';
+import { Component, useEffect, useRef, useState } from 'react';
+import { IMG, prefetch } from './api';
+import { useLibrary, actions } from './store';
 
 export function useHash() {
   const [h, setH] = useState(location.hash || '#/');
@@ -56,15 +57,54 @@ export const LoadMore = ({ paged }) =>
     <div className="more"><button className="btn ghost" disabled={paged.loading} onClick={paged.loadMore}>{paged.loading ? 'Loading…' : 'Load more'}</button></div>
   ) : null;
 
-export function Card({ it, badge, sub }) {
+// ---- toasts (with optional Undo) ----
+const bus = new EventTarget();
+export const toast = (msg, undo) => bus.dispatchEvent(new CustomEvent('toast', { detail: { msg, undo, id: Math.random() } }));
+export function Toaster() {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    const f = (e) => {
+      const t = e.detail;
+      setList((l) => [...l.slice(-2), t]);
+      setTimeout(() => setList((l) => l.filter((x) => x !== t)), 5000);
+    };
+    bus.addEventListener('toast', f);
+    return () => bus.removeEventListener('toast', f);
+  }, []);
   return (
-    <a className="card" href={it.type === 'person' ? `#/person/${it.id}` : `#/title/${it.type}/${it.id}`}>
+    <div className="toasts" role="status" aria-live="polite">
+      {list.map((t) => (
+        <div key={t.id} className="toast">{t.msg}
+          {t.undo && <button onClick={() => { t.undo(); setList((l) => l.filter((x) => x !== t)); }}>Undo</button>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Card({ it, badge, sub }) {
+  const { items } = useLibrary();
+  const hover = useRef();
+  const isPerson = it.type === 'person';
+  const saved = !!items[it.key]?.watchlist;
+  const toggle = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    actions.toggleWatchlist(it);
+    toast(saved ? `Removed ${it.title} from your watchlist` : `Added ${it.title} to your watchlist`, () => actions.toggleWatchlist(it));
+  };
+  // prefetch only when the pointer rests on the card, not while sweeping past it
+  const intent = () => { clearTimeout(hover.current); hover.current = setTimeout(() => prefetch(it), 120); };
+  return (
+    <a className="card" href={isPerson ? `#/person/${it.id}` : `#/title/${it.type}/${it.id}`}
+      onPointerEnter={intent} onPointerLeave={() => clearTimeout(hover.current)} onFocus={intent}>
       <div className="poster">
         {it.poster ? <img loading="lazy" src={IMG(it.poster)} alt="" /> : <div className="noimg">{it.title}</div>}
         {badge && <span className="badge">{badge}</span>}
+        {!isPerson && <button className={`quick ${saved ? 'on' : ''}`} onClick={toggle} aria-label={saved ? 'Remove from watchlist' : 'Add to watchlist'} title={saved ? 'In your watchlist' : 'Add to watchlist'}>{saved ? '✓' : '+'}</button>}
+        {!isPerson && it.overview && <div className="peek"><b>{it.vote ? `★ ${it.vote.toFixed(1)}` : ''}</b><p>{it.overview}</p></div>}
       </div>
       <div className="ctitle">{it.title}</div>
-      <div className="csub">{sub ?? (it.type === 'person' ? it.dept : [it.year, it.anime ? 'Anime' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '))}</div>
+      <div className="csub">{sub ?? (isPerson ? it.dept : [it.year, it.anime ? 'Anime' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '))}</div>
     </a>
   );
 }

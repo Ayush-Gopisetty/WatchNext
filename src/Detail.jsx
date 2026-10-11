@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { details, season, episodeVideos, IMG } from './api';
-import { Row, Trailer, Stars, Err, useAsync, SkeletonHero, SkeletonEpisodes } from './ui';
+import { Row, Trailer, Stars, Err, useAsync, SkeletonHero, SkeletonEpisodes, toast } from './ui';
 import { useLibrary, actions, epKey, epCount } from './store';
 
 export default function Detail({ type, id }) {
@@ -24,7 +24,7 @@ export default function Detail({ type, id }) {
             {d.type === 'movie'
               ? <button className={`btn ${me.watched ? 'on' : 'ghost'}`} onClick={() => actions.toggleMovie(d)}>{me.watched ? '✓ Watched' : 'Mark watched'}</button>
               : <span className="muted">{epCount(me)}/{d.totalEpisodes} episodes watched</span>}
-            <button className={`btn ${me.watchlist ? 'on' : 'ghost'}`} onClick={() => actions.toggleWatchlist(d)}>{me.watchlist ? '✓ In watchlist' : '+ Watchlist'}</button>
+            <button className={`btn ${me.watchlist ? 'on' : 'ghost'}`} onClick={() => { actions.toggleWatchlist(d); toast(me.watchlist ? 'Removed from your watchlist' : 'Added to your watchlist', () => actions.toggleWatchlist(d)); }}>{me.watchlist ? '✓ In watchlist' : '+ Watchlist'}</button>
             <Stars value={me.rating} onChange={(n) => actions.rate(d, n)} />
           </div>
         </div>
@@ -48,6 +48,13 @@ function Seasons({ d, me, onPlay, shield }) {
   const { data, error, loading, retry } = useAsync(() => season(d.id, sn), [d.id, sn]);
   const watched = (s, e) => !!me.eps?.[epKey(s, e)];
 
+  const markSeason = (on) => {
+    const all = data.episodes.map((e) => [sn, e.episode_number]);
+    const before = all.filter(([a, b]) => watched(a, b));
+    actions.setEpisodes(d, all, on);
+    toast(on ? `Season ${sn} marked as watched` : `Season ${sn} cleared`, () => { actions.setEpisodes(d, all, false); actions.setEpisodes(d, before, true); });
+  };
+
   const play = async (ep) => {
     onPlay({ video: null, fallbackNote: 'Looking for a preview…' });
     const v = await episodeVideos(d.id, sn, ep.episode_number);
@@ -67,8 +74,8 @@ function Seasons({ d, me, onPlay, shield }) {
       {error ? <Err error={error} onRetry={retry} /> : loading ? <SkeletonEpisodes /> : (
         <>
           <div className="bulk">
-            <button className="link" onClick={() => actions.setEpisodes(d, data.episodes.map((e) => [sn, e.episode_number]), true)}>Mark season watched</button>
-            <button className="link" onClick={() => actions.setEpisodes(d, data.episodes.map((e) => [sn, e.episode_number]), false)}>Clear season</button>
+            <button className="link" onClick={() => markSeason(true)}>Mark season watched</button>
+            <button className="link" onClick={() => markSeason(false)}>Clear season</button>
           </div>
           {data.episodes.map((ep) => {
             const seen = watched(sn, ep.episode_number);

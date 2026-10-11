@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { browse, search, IMG } from './api';
+import { browse, search, details, IMG } from './api';
 import { Card, Row, Err, useAsync, usePaged, LoadMore, SkeletonGrid, SkeletonRecs } from './ui';
 import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
 import { recommend, tasteProfile } from './recommend';
@@ -10,11 +10,19 @@ export function Home() {
   const lib = useLibrary();
   const [tab, setTab] = useState('all');
   const paged = usePaged((n) => browse(tab, n), [tab]);
-  const resume = Object.values(lib.items)
-    .filter((i) => i.type === 'tv' && isStarted(i) && !isFinished(i))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const started = Object.values(lib.items).filter((i) => i.type === 'tv' && isStarted(i)).sort((a, b) => b.updatedAt - a.updatedAt);
+  // ask TMDB (cached) how many episodes each followed show has now, to spot newly released ones
+  const { data: latest } = useAsync(
+    () => Promise.all(started.slice(0, 15).map((i) => details('tv', i.id).then((d) => [i.key, d.totalEpisodes]).catch(() => null)))
+      .then((r) => Object.fromEntries(r.filter(Boolean))),
+    [started.slice(0, 15).map((i) => i.key).join()],
+  );
+  const fresh = started.filter((i) => i.total > 0 && latest?.[i.key] > i.total);
+  const freshKeys = new Set(fresh.map((i) => i.key));
+  const resume = started.filter((i) => !isFinished(i) && !freshKeys.has(i.key));
   return (
     <>
+      <Row title="New episodes" items={fresh} badge={(i) => `${latest[i.key] - i.total} new`} />
       <Row title="Continue watching" items={resume} badge={(i) => `${epCount(i)}/${i.total || '?'}`} />
       <div className="tabs">{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
       {paged.error && !paged.items.length ? <Err error={paged.error} onRetry={paged.retry} /> : !paged.items.length ? <SkeletonGrid /> : (
