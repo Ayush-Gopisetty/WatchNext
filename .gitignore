@@ -1,0 +1,21 @@
+# Dependencies and build output
+node_modules
+dist
+
+# Secrets: never commit
+.env
+.env.*
+.env.example
+
+# Supabase CLI local state
+supabase/.temp
+supabase/.branches
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and editor files
+.DS_Store
+.idea
+.vscode/
