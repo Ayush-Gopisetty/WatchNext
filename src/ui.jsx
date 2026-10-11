@@ -127,12 +127,14 @@ export function Trailer({ video, fallbackNote, onClose }) {
     <div className="modal" onClick={onClose}>
       <div className="player" onClick={(e) => e.stopPropagation()}>
         <button className="x" onClick={onClose} aria-label="Close">✕</button>
-        {video ? (
-          <iframe
-            src={`https://www.youtube-nocookie.com/embed/${video.key}?autoplay=1&rel=0`}
-            title={video.name} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen
-          />
-        ) : <div className="novid">No trailer available</div>}
+        <div className="frame">
+          {video ? (
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${video.key}?autoplay=1&playsinline=1&rel=0`}
+              title={video.name} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen
+            />
+          ) : <div className="novid">No trailer available</div>}
+        </div>
         {fallbackNote && <p className="note">{fallbackNote}</p>}
       </div>
     </div>
