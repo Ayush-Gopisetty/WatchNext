@@ -29,7 +29,7 @@ export function useLibrary() {
 function upsert(item, patch) {
   const prev = state.items[item.key] || {
     key: item.key, type: item.type, id: item.id, title: item.title, poster: item.poster,
-    year: item.year, genres: item.genres || [], anime: item.anime, total: item.totalEpisodes || 0,
+    year: item.year, genres: item.genres || [], anime: item.anime, kdrama: item.kdrama, total: item.totalEpisodes || 0,
     eps: {}, addedAt: Date.now(),
   };
   const next = { ...prev, ...patch, updatedAt: Date.now() };

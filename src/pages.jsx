@@ -1,29 +1,62 @@
-import { useState, useEffect } from 'react';
-import { browse, search, details, IMG, GENRES, genreFits } from './api';
+import { useState, useEffect, useRef } from 'react';
+import { browse, search, details, IMG, GENRES, FLAVORS, genreFits } from './api';
 import { Card, Row, Err, useAsync, usePaged, LoadMore, SkeletonGrid, SkeletonRecs } from './ui';
 import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
 import { recommend, tasteProfile } from './recommend';
 
-const DROP = ['movie', 'tv', 'anime']; // tabs that open a genre menu
-const TABS = [['all', 'Trending'], ['movie', 'Movies'], ['tv', 'Shows'], ['anime', 'Anime'], ['top', 'Top rated']];
+const DROP = ['movie', 'tv', 'anime', 'kdrama']; // tabs that open a genre menu
+const TABS = [['all', 'Trending'], ['movie', 'Movies'], ['tv', 'Shows'], ['anime', 'Anime'], ['kdrama', 'K-Dramas'], ['top', 'Top rated']];
+
+// One Netflix-style strip: loads its titles only once it scrolls near the viewport.
+function GenreRow({ kind, genre, flavor, title, onAll }) {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    if (seen) return;
+    const io = new IntersectionObserver(([e]) => e.isIntersecting && (setSeen(true), io.disconnect()), { rootMargin: '300px' });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [seen]);
+  const { data, error } = useAsync(() => (seen ? browse(kind, 1, genre, flavor) : Promise.resolve(null)), [seen, kind, genre, flavor]);
+  if (error || (data && !data.length)) return null;
+  return (
+    <section className="row" ref={ref}>
+      <div className="rowhead">
+        <h2>{title}</h2>
+        {onAll && <button className="link" onClick={onAll}>See all ›</button>}
+      </div>
+      <div className="strip">
+        {data ? data.map((it) => <Card key={it.key} it={it} />) : Array.from({ length: 8 }, (_, i) => <div key={i} className="sk rowsk" />)}
+      </div>
+    </section>
+  );
+}
 
 export function Home() {
   const lib = useLibrary();
   const [tab, setTab] = useState('all');
   const [genre, setGenre] = useState(null);
-  const paged = usePaged((n) => browse(tab, n, genre), [tab, genre]);
+  const [flavor, setFlavor] = useState(null);
+  const [full, setFull] = useState(false); // true → show the complete paged grid instead of strips
+  const sections = DROP.includes(tab) && !genre && !full; // Movies/Shows/Anime with no genre picked → one strip per genre
+  const strips = DROP.includes(tab) && !full;
+  const paged = usePaged((n) => (strips ? Promise.resolve([]) : browse(tab, n, genre, flavor)), [tab, genre, flavor, strips]);
   const [menu, setMenu] = useState(null); // { k, top, left } of the open genre menu
   useEffect(() => {
     if (!menu) return;
-    const close = () => setMenu(null);
+    const born = Date.now();
+    // the browser may scroll a half-hidden tab into view as it's tapped; don't treat that as the user scrolling away
+    const close = (e) => !(e?.type === 'scroll' && Date.now() - born < 400) && setMenu(null);
     const esc = (e) => e.key === 'Escape' && close();
     addEventListener('click', close); addEventListener('scroll', close, true); addEventListener('resize', close); addEventListener('keydown', esc);
     return () => { removeEventListener('click', close); removeEventListener('scroll', close, true); removeEventListener('resize', close); removeEventListener('keydown', esc); };
   }, [menu]);
-  const pick = (k, g) => { setTab(k); setGenre(g); setMenu(null); };
+  const pick = (k, g) => { setTab(k); setGenre(g); setFlavor(null); setFull(false); setMenu(null); };
+  const seeAll = (g, f) => { setGenre(g); setFlavor(f); setFull(true); };
   const openMenu = (e, k) => {
     e.stopPropagation();
     if (menu?.k === k) return setMenu(null);
+    e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     const r = e.currentTarget.getBoundingClientRect();
     setMenu({ k, top: r.bottom + 6, left: Math.max(8, Math.min(r.left, innerWidth - 188)) });
   };
@@ -54,8 +87,26 @@ export function Home() {
           ))}
         </ul>
       )}
-      {paged.error && !paged.items.length ? <Err error={paged.error} onRetry={paged.retry} /> : !paged.items.length ? <SkeletonGrid /> : (
+      {sections ? (
         <>
+          <GenreRow key={`${tab}-popular`} kind={tab} genre={null} title={`Popular ${TABS.find(([k]) => k === tab)[1].toLowerCase()}`} onAll={() => seeAll(null, null)} />
+          {GENRES.filter(([g]) => genreFits(g, tab)).map(([g]) => (
+            <GenreRow key={`${tab}-${g}`} kind={tab} genre={g} title={g} onAll={() => pick(tab, g)} />
+          ))}
+        </>
+      ) : genre && strips ? (
+        <>
+          <h1 className="genrehead">{genre} {TABS.find(([k]) => k === tab)[1].toLowerCase()}</h1>
+          {FLAVORS.map(([f, l]) => <GenreRow key={`${tab}-${genre}-${f}`} kind={tab} genre={genre} flavor={f} title={`${l} ${genre.toLowerCase()}`} onAll={() => seeAll(genre, f)} />)}
+        </>
+      ) : paged.error && !paged.items.length ? <Err error={paged.error} onRetry={paged.retry} /> : !paged.items.length ? <SkeletonGrid /> : (
+        <>
+          {full && (
+            <div className="fullhead">
+              <button className="link" onClick={() => (genre ? (setFull(false), setFlavor(null)) : pick(tab, null))}>‹ Back</button>
+              <h1 className="genrehead">{[flavor && FLAVORS.find(([f]) => f === flavor)[1], genre, genre ? '' : 'All', TABS.find(([k]) => k === tab)[1].toLowerCase()].filter((x) => x !== '' && x !== null).join(' ')}</h1>
+            </div>
+          )}
           <div className="grid">{paged.items.map((it) => <Card key={it.key} it={it} />)}</div>
           <LoadMore paged={paged} />
         </>
@@ -86,9 +137,9 @@ export function Library() {
   const { items } = useLibrary();
   const [f, setF] = useState('watching');
   const [kind, setKind] = useState('all');
-  const KINDS = [['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime']];
+  const KINDS = [['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime'], ['kdrama', 'K-Dramas']];
   const all = Object.values(items)
-    .filter((i) => kind === 'all' || (kind === 'anime' ? i.anime : kind === 'movie' ? i.type === 'movie' : i.type === 'tv' && !i.anime))
+    .filter((i) => kind === 'all' || (kind === 'anime' ? i.anime : kind === 'kdrama' ? i.kdrama : kind === 'movie' ? i.type === 'movie' : i.type === 'tv' && !i.anime && !i.kdrama))
     .sort((a, b) => b.updatedAt - a.updatedAt);
   const groups = {
     watching: all.filter((i) => i.type === 'tv' && isStarted(i) && !isFinished(i)),
@@ -121,7 +172,7 @@ export function ForYou() {
   const { data, error, loading, retry } = useAsync(() => recommend(lib), [sig]);
   const profile = data?.profile || tasteProfile(Object.values(lib.items));
   if (error) return <Err error={error} onRetry={retry} />;
-  const recs = (data?.recs || []).filter((r) => kind === 'all' || (kind === 'anime' ? r.anime : kind === 'movie' ? r.type === 'movie' : r.type === 'tv' && !r.anime));
+  const recs = (data?.recs || []).filter((r) => kind === 'all' || (kind === 'anime' ? r.anime : kind === 'kdrama' ? r.kdrama : kind === 'movie' ? r.type === 'movie' : r.type === 'tv' && !r.anime && !r.kdrama));
   return (
     <>
       <section className="dna">
@@ -130,7 +181,7 @@ export function ForYou() {
           <div key={g.id} className="dnarow"><span>{g.name}</span><div className="dnabar"><i className={g.score < 0 ? 'neg' : ''} style={{ width: `${Math.abs(g.score) * 100}%` }} /></div></div>
         )) : <p className="muted">Watch or rate a few things and your taste profile builds itself here.</p>}
       </section>
-      <div className="tabs">{[['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
+      <div className="tabs">{[['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime'], ['kdrama', 'K-Dramas']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
       {loading ? <SkeletonRecs /> : !recs.length ? <div className="empty">Mark a few titles as watched (and rate them ★) to get recommendations.</div> : (
         <div className="recs">
           {recs.map((r, i) => (

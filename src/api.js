@@ -40,6 +40,7 @@ export function norm(x, fallbackType) {
     vote: x.vote_average,
     genres: x.genre_ids || x.genres?.map((g) => g.id) || [],
     anime: isAnime(x),
+    kdrama: type === 'tv' && x.original_language === 'ko' && (x.origin_country || ['KR']).includes('KR'),
   };
 }
 const list = (r, t) => r.results.filter((x) => x.media_type !== 'person').map((x) => norm(x, t));
@@ -62,25 +63,38 @@ export const genreFits = (g, kind) => {
   const [, m, t] = GENRES.find((x) => x[0] === g) || [];
   if (kind === 'movie' || kind === 'top') return m != null;
   if (kind === 'tv') return t != null;
-  if (kind === 'anime') return t != null && g !== 'Animation';
+  if (kind === 'anime' || kind === 'kdrama') return t != null && g !== 'Animation';
   return m != null || t != null;
 };
 
-const discover = (type, kind, genre, page) => {
+// Themed slices of a genre, each one a different Discover query
+export const FLAVORS = [['popular', 'Popular'], ['top', 'Top rated'], ['new', 'New releases'], ['gems', 'Hidden gems']];
+const flavorParams = (type, flavor) => {
+  const day = (d) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 10);
+  const date = type === 'movie' ? 'primary_release_date' : 'first_air_date';
+  if (flavor === 'top') return { sort_by: 'vote_average.desc', 'vote_count.gte': type === 'movie' ? 1500 : 400 };
+  if (flavor === 'new') return { sort_by: `${date}.desc`, [`${date}.lte`]: day(0), [`${date}.gte`]: day(240), 'vote_count.gte': 10 };
+  if (flavor === 'gems') return { sort_by: 'vote_average.desc', 'vote_count.gte': 100, 'vote_count.lte': 1000, 'vote_average.gte': 7 };
+  return { sort_by: 'popularity.desc' };
+};
+
+const discover = (type, kind, genre, page, flavor) => {
   const [, m, t] = GENRES.find((x) => x[0] === genre);
   const id = type === 'movie' ? m : t;
   if (id == null) return Promise.resolve([]);
   const params = { with_genres: kind === 'anime' ? `16,${id}` : id, page, sort_by: 'popularity.desc' };
   if (kind === 'anime') params.with_original_language = 'ja';
+  if (kind === 'kdrama') Object.assign(params, { with_original_language: 'ko', with_origin_country: 'KR' });
   if (kind === 'top') Object.assign(params, { sort_by: 'vote_average.desc', 'vote_count.gte': 500 });
+  if (flavor) Object.assign(params, flavorParams(type, flavor));
   return tmdb(`/discover/${type}`, params).then((r) => list(r, type));
 };
 
 // TMDB returns 20 per page; callers ask for page 1, 2, 3... (max 500). `genre` is a GENRES label or null.
-export const browse = (kind, page = 1, genre = null) => {
+export const browse = (kind, page = 1, genre = null, flavor = null) => {
   if (genre) {
-    if (kind === 'movie' || kind === 'top') return discover('movie', kind, genre, page);
-    if (kind === 'tv' || kind === 'anime') return discover('tv', kind, genre, page);
+    if (kind === 'movie' || kind === 'top') return discover('movie', kind, genre, page, flavor);
+    if (kind === 'tv' || kind === 'anime' || kind === 'kdrama') return discover('tv', kind, genre, page, flavor);
     // Trending: mix movies and shows, alternating so both stay visible
     return Promise.all([discover('movie', kind, genre, page), discover('tv', kind, genre, page)]).then(([mv, tv]) => {
       const out = [];
@@ -92,6 +106,8 @@ export const browse = (kind, page = 1, genre = null) => {
   if (kind === 'tv') return tmdb('/tv/popular', { page }).then((r) => list(r, 'tv'));
   if (kind === 'anime')
     return tmdb('/discover/tv', { with_genres: 16, with_original_language: 'ja', sort_by: 'popularity.desc', page }).then((r) => list(r, 'tv'));
+  if (kind === 'kdrama')
+    return tmdb('/discover/tv', { with_original_language: 'ko', with_origin_country: 'KR', with_genres: 18, sort_by: 'popularity.desc', page }).then((r) => list(r, 'tv'));
   if (kind === 'top') return tmdb('/movie/top_rated', { page }).then((r) => list(r, 'movie'));
   return trending('all', page);
 };

@@ -105,7 +105,7 @@ export function Card({ it, badge, sub }) {
         {!isPerson && it.overview && <div className="peek"><b>{it.vote ? `★ ${it.vote.toFixed(1)}` : ''}</b><p>{it.overview}</p></div>}
       </div>
       <div className="ctitle">{it.title}</div>
-      <div className="csub">{sub ?? (isPerson ? it.dept : [it.year, it.anime ? 'Anime' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '))}</div>
+      <div className="csub">{sub ?? (isPerson ? it.dept : [it.year, it.anime ? 'Anime' : it.kdrama ? 'K-Drama' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '))}</div>
     </a>
   );
 }
