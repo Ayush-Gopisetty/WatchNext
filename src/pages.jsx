@@ -1,15 +1,32 @@
-import { useState } from 'react';
-import { browse, search, details, IMG } from './api';
+import { useState, useEffect } from 'react';
+import { browse, search, details, IMG, GENRES, genreFits } from './api';
 import { Card, Row, Err, useAsync, usePaged, LoadMore, SkeletonGrid, SkeletonRecs } from './ui';
 import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
 import { recommend, tasteProfile } from './recommend';
 
+const DROP = ['movie', 'tv', 'anime']; // tabs that open a genre menu
 const TABS = [['all', 'Trending'], ['movie', 'Movies'], ['tv', 'Shows'], ['anime', 'Anime'], ['top', 'Top rated']];
 
 export function Home() {
   const lib = useLibrary();
   const [tab, setTab] = useState('all');
-  const paged = usePaged((n) => browse(tab, n), [tab]);
+  const [genre, setGenre] = useState(null);
+  const paged = usePaged((n) => browse(tab, n, genre), [tab, genre]);
+  const [menu, setMenu] = useState(null); // { k, top, left } of the open genre menu
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const esc = (e) => e.key === 'Escape' && close();
+    addEventListener('click', close); addEventListener('scroll', close, true); addEventListener('resize', close); addEventListener('keydown', esc);
+    return () => { removeEventListener('click', close); removeEventListener('scroll', close, true); removeEventListener('resize', close); removeEventListener('keydown', esc); };
+  }, [menu]);
+  const pick = (k, g) => { setTab(k); setGenre(g); setMenu(null); };
+  const openMenu = (e, k) => {
+    e.stopPropagation();
+    if (menu?.k === k) return setMenu(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    setMenu({ k, top: r.bottom + 6, left: Math.max(8, Math.min(r.left, innerWidth - 188)) });
+  };
   const started = Object.values(lib.items).filter((i) => i.type === 'tv' && isStarted(i)).sort((a, b) => b.updatedAt - a.updatedAt);
   // ask TMDB (cached) how many episodes each followed show has now, to spot newly released ones
   const { data: latest } = useAsync(
@@ -24,7 +41,19 @@ export function Home() {
     <>
       <Row title="New episodes" items={fresh} badge={(i) => `${latest[i.key] - i.total} new`} />
       <Row title="Continue watching" items={resume} badge={(i) => `${epCount(i)}/${i.total || '?'}`} />
-      <div className="tabs">{TABS.map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}</div>
+      <div className="tabs">{TABS.map(([k, l]) => DROP.includes(k) ? (
+        <button key={k} className={`dd ${tab === k ? 'on' : ''}`} aria-haspopup="listbox" aria-expanded={menu?.k === k} onClick={(e) => openMenu(e, k)}>
+          {l}{tab === k && genre ? ` · ${genre}` : ''} <span aria-hidden>▾</span>
+        </button>
+      ) : <button key={k} className={tab === k ? 'on' : ''} onClick={() => pick(k, null)}>{l}</button>)}</div>
+      {menu && (
+        <ul className="ddmenu" role="listbox" style={{ top: menu.top, left: menu.left }} onClick={(e) => e.stopPropagation()}>
+          <li><button className={tab === menu.k && !genre ? 'on' : ''} onClick={() => pick(menu.k, null)}>All {TABS.find(([k]) => k === menu.k)[1].toLowerCase()}</button></li>
+          {GENRES.filter(([g]) => genreFits(g, menu.k)).map(([g]) => (
+            <li key={g}><button className={tab === menu.k && genre === g ? 'on' : ''} onClick={() => pick(menu.k, g)}>{g}</button></li>
+          ))}
+        </ul>
+      )}
       {paged.error && !paged.items.length ? <Err error={paged.error} onRetry={paged.retry} /> : !paged.items.length ? <SkeletonGrid /> : (
         <>
           <div className="grid">{paged.items.map((it) => <Card key={it.key} it={it} />)}</div>
@@ -56,7 +85,11 @@ export function Search({ q }) {
 export function Library() {
   const { items } = useLibrary();
   const [f, setF] = useState('watching');
-  const all = Object.values(items).sort((a, b) => b.updatedAt - a.updatedAt);
+  const [kind, setKind] = useState('all');
+  const KINDS = [['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime']];
+  const all = Object.values(items)
+    .filter((i) => kind === 'all' || (kind === 'anime' ? i.anime : kind === 'movie' ? i.type === 'movie' : i.type === 'tv' && !i.anime))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
   const groups = {
     watching: all.filter((i) => i.type === 'tv' && isStarted(i) && !isFinished(i)),
     watchlist: all.filter((i) => i.watchlist && !isStarted(i)),
@@ -65,6 +98,7 @@ export function Library() {
   const names = { watching: 'In progress', watchlist: 'Watchlist', finished: 'Finished' };
   return (
     <>
+      <div className="tabs">{KINDS.map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
       <div className="tabs">{Object.keys(groups).map((k) => <button key={k} className={f === k ? 'on' : ''} onClick={() => setF(k)}>{names[k]} ({groups[k].length})</button>)}</div>
       {groups[f].length ? (
         <div className="grid">

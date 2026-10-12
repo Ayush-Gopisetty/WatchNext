@@ -50,8 +50,44 @@ const normPerson = (x) => ({ key: `person:${x.id}`, id: x.id, type: 'person', ti
 export const search = (q, page = 1) =>
   tmdb('/search/multi', { query: q, include_adult: false, page }).then((r) =>
     r.results.filter((x) => ['movie', 'tv', 'person'].includes(x.media_type)).map((x) => (x.media_type === 'person' ? normPerson(x) : norm(x))));
-// TMDB returns 20 per page; callers ask for page 1, 2, 3... (max 500)
-export const browse = (kind, page = 1) => {
+// Genre chips: [label, TMDB movie genre id, TMDB tv genre id] (null = no equivalent on that side)
+export const GENRES = [
+  ['Action', 28, 10759], ['Adventure', 12, 10759], ['Animation', 16, 16], ['Comedy', 35, 35], ['Crime', 80, 80],
+  ['Documentary', 99, 99], ['Drama', 18, 18], ['Family', 10751, 10751], ['Fantasy', 14, 10765], ['History', 36, null],
+  ['Horror', 27, null], ['Mystery', 9648, 9648], ['Romance', 10749, null], ['Sci-Fi', 878, 10765], ['Thriller', 53, null],
+  ['War', 10752, 10768], ['Western', 37, 37],
+];
+// Does this genre exist for the given Discover tab?
+export const genreFits = (g, kind) => {
+  const [, m, t] = GENRES.find((x) => x[0] === g) || [];
+  if (kind === 'movie' || kind === 'top') return m != null;
+  if (kind === 'tv') return t != null;
+  if (kind === 'anime') return t != null && g !== 'Animation';
+  return m != null || t != null;
+};
+
+const discover = (type, kind, genre, page) => {
+  const [, m, t] = GENRES.find((x) => x[0] === genre);
+  const id = type === 'movie' ? m : t;
+  if (id == null) return Promise.resolve([]);
+  const params = { with_genres: kind === 'anime' ? `16,${id}` : id, page, sort_by: 'popularity.desc' };
+  if (kind === 'anime') params.with_original_language = 'ja';
+  if (kind === 'top') Object.assign(params, { sort_by: 'vote_average.desc', 'vote_count.gte': 500 });
+  return tmdb(`/discover/${type}`, params).then((r) => list(r, type));
+};
+
+// TMDB returns 20 per page; callers ask for page 1, 2, 3... (max 500). `genre` is a GENRES label or null.
+export const browse = (kind, page = 1, genre = null) => {
+  if (genre) {
+    if (kind === 'movie' || kind === 'top') return discover('movie', kind, genre, page);
+    if (kind === 'tv' || kind === 'anime') return discover('tv', kind, genre, page);
+    // Trending: mix movies and shows, alternating so both stay visible
+    return Promise.all([discover('movie', kind, genre, page), discover('tv', kind, genre, page)]).then(([mv, tv]) => {
+      const out = [];
+      for (let i = 0; i < Math.max(mv.length, tv.length); i++) { if (mv[i]) out.push(mv[i]); if (tv[i]) out.push(tv[i]); }
+      return out;
+    });
+  }
   if (kind === 'movie') return tmdb('/movie/popular', { page }).then((r) => list(r, 'movie'));
   if (kind === 'tv') return tmdb('/tv/popular', { page }).then((r) => list(r, 'tv'));
   if (kind === 'anime')

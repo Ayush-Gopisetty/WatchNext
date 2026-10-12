@@ -5,7 +5,7 @@ const ALLOW = [
   /^\/trending\/(all|movie|tv)\/week$/,
   /^\/(movie|tv)\/(popular|top_rated)$/,
   /^\/search\/multi$/,
-  /^\/discover\/tv$/,
+  /^\/discover\/(movie|tv)$/,
   /^\/person\/\d+$/,
   /^\/(movie|tv)\/\d+$/,
   /^\/tv\/\d+\/season\/\d+$/,
