@@ -152,3 +152,9 @@ a.cast { color:inherit; } a.cast:hover b { color:var(--accent); }
 @media (max-width:700px) { .rowsk { width:116px; } }
 .genrehead { font-size:26px; margin:8px 0 0; }
 .fullhead { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:12px; } .fullhead .genrehead { margin:0; }
+.cert { display:inline-block; margin-right:8px; padding:0 7px; border:1px solid currentColor; border-radius:5px; font-size:12px; font-weight:700; line-height:20px; letter-spacing:.3px; vertical-align:1px; } .cert small { font-size:10px; opacity:.8; }
+.scores { display:flex; gap:10px; flex-wrap:wrap; margin:10px 0; } .info .scores { justify-content:inherit; }
+.score { min-width:104px; padding:6px 12px; border:1px solid var(--line); border-radius:10px; background:rgba(255,255,255,.06); text-align:center; line-height:1.25; }
+.score b { display:block; font-size:17px; } .score span { display:block; font-size:11px; opacity:.8; }
+.score.good b { color:#4ade80; } .score.mixed b { color:#ffc53d; } .score.bad b { color:#f87171; } .score.na { opacity:.55; }
+@media (max-width:700px) { .scores { justify-content:center; } }

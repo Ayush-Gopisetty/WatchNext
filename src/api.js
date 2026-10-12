@@ -112,11 +112,49 @@ export const browse = (kind, page = 1, genre = null, flavor = null) => {
   return trending('all', page);
 };
 
+// US rating: MPAA (G, PG, PG-13, R, NC-17) for movies, TV Parental Guidelines (TV-Y … TV-MA) for series.
+// Falls back to another country's rating when no US one is on file.
+function certification(r, type) {
+  if (type === 'movie') {
+    const rows = r.release_dates?.results || [];
+    const pick = (c) => {
+      const dates = (rows.find((x) => x.iso_3166_1 === c)?.release_dates || []).filter((d) => d.certification);
+      // prefer theatrical (3), then digital/physical/TV, then premiere
+      return [3, 4, 5, 6, 2, 1].map((t) => dates.find((d) => d.type === t)).find(Boolean)?.certification || dates[0]?.certification;
+    };
+    const us = pick('US');
+    if (us) return { label: us, country: 'US' };
+    const other = rows.find((x) => pick(x.iso_3166_1));
+    return other ? { label: pick(other.iso_3166_1), country: other.iso_3166_1 } : null;
+  }
+  const rows = (r.content_ratings?.results || []).filter((x) => x.rating);
+  const hit = rows.find((x) => x.iso_3166_1 === 'US') || rows[0];
+  return hit ? { label: hit.rating, country: hit.iso_3166_1 } : null;
+}
+
+// IMDb / Rotten Tomatoes / Metacritic scores (via our OMDb proxy). Resolves to null when unavailable.
+// When the server says OMDb's daily limit is hit, scores are hidden everywhere (even ones fetched earlier) for a while.
+const scores = new Map();
+let limitUntil = 0;
+export function ratings(imdbId) {
+  if (!imdbId || !supabase || Date.now() < limitUntil) return Promise.resolve(null);
+  if (!scores.has(imdbId))
+    scores.set(imdbId, supabase.functions.invoke('ratings', { body: { imdb_id: imdbId } })
+      .then(({ data, error }) => {
+        if (data?.limit) { limitUntil = Date.now() + 10 * 60_000; scores.clear(); return null; }
+        if (error || data?.error) { scores.delete(imdbId); return null; }
+        return data;
+      }, () => (scores.delete(imdbId), null)));
+  return scores.get(imdbId);
+}
+
 export async function details(type, id) {
-  const r = await tmdb(`/${type}/${id}`, { append_to_response: 'videos,credits,recommendations,similar,keywords' });
+  const r = await tmdb(`/${type}/${id}`, { append_to_response: 'videos,credits,recommendations,similar,keywords,release_dates,content_ratings,external_ids' });
   return {
     ...norm(r, type),
     tagline: r.tagline,
+    cert: certification(r, type),
+    imdbId: r.imdb_id || r.external_ids?.imdb_id || null,
     runtime: r.runtime || r.episode_run_time?.[0],
     genreNames: r.genres.map((g) => g.name),
     seasons: (r.seasons || []).filter((s) => s.season_number > 0),

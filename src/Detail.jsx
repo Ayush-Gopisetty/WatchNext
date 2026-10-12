@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { details, season, episodeVideos, IMG } from './api';
+import { details, season, episodeVideos, ratings, IMG } from './api';
 import { Row, Trailer, Stars, Err, useAsync, SkeletonHero, SkeletonEpisodes, toast } from './ui';
 import { useLibrary, actions, epKey, epCount } from './store';
 
 export default function Detail({ type, id }) {
   const { data: d, error, loading, retry } = useAsync(() => details(type, id), [type, id]);
   const lib = useLibrary();
+  const { data: scores } = useAsync(() => (d ? ratings(d.imdbId) : null), [d?.imdbId]);
   const [trailer, setTrailer] = useState(null);
   if (error) return <Err error={error} onRetry={retry} />;
   if (loading) return <SkeletonHero />;
@@ -17,7 +18,8 @@ export default function Detail({ type, id }) {
         <div className="info">
           <h1>{d.title} <small>{d.year}</small></h1>
           {d.tagline && <p className="muted">{d.tagline}</p>}
-          <p className="meta">{[d.anime ? 'Anime' : d.type === 'movie' ? 'Movie' : 'Series', d.genreNames.join(', '), d.runtime && `${d.runtime} min`, d.vote && `★ ${d.vote.toFixed(1)}`].filter(Boolean).join(' · ')}</p>
+          <p className="meta">{d.cert && <span className="cert" title={d.cert.country === 'US' ? (d.type === 'movie' ? 'MPAA rating' : 'TV Parental Guidelines rating') : `Rating (${d.cert.country}) — no US rating on file`}>{d.cert.label}{d.cert.country !== 'US' && <small> {d.cert.country}</small>}</span>}{[d.anime ? 'Anime' : d.type === 'movie' ? 'Movie' : 'Series', d.genreNames.join(', '), d.runtime && `${d.runtime} min`, d.vote && `★ ${d.vote.toFixed(1)}`].filter(Boolean).join(' · ')}</p>
+          <Scores s={scores} />
           <p>{d.overview}</p>
           <div className="actions">
             <button className="btn" onClick={() => setTrailer({ video: d.trailer })}>▶ Trailer</button>
@@ -36,6 +38,26 @@ export default function Detail({ type, id }) {
       <Row title="More like this" items={d.recs.length ? d.recs : d.similar} />
       {trailer && <Trailer {...trailer} onClose={() => setTrailer(null)} />}
     </>
+  );
+}
+
+// Three separate critic/audience scores. Missing ones show N/A; nothing renders if the lookup isn't available.
+function Scores({ s }) {
+  if (!s) return null;
+  const mc = +s.metacritic?.score;
+  const items = [
+    ['rt', 'Rotten Tomatoes', s.rt && s.rt.score, parseInt(s.rt?.score) >= 60 ? 'good' : s.rt ? 'bad' : ''],
+    ['imdb', 'IMDb', s.imdb && `${s.imdb.score}/10`, s.imdb?.votes ? `${s.imdb.votes} votes` : ''],
+    ['mc', 'Metacritic', s.metacritic && s.metacritic.score, mc >= 61 ? 'good' : mc >= 40 ? 'mixed' : s.metacritic ? 'bad' : ''],
+  ];
+  return (
+    <div className="scores">
+      {items.map(([k, label, val, tone]) => (
+        <div key={k} className={`score ${val ? '' : 'na'} ${k === 'imdb' ? '' : tone}`} title={label}>
+          <b>{val || 'N/A'}</b><span>{label}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
