@@ -4,7 +4,8 @@
 // count reaches OMDB_DAILY_LIMIT, ALL lookups answer { limit: true } until the next day so the app hides scores everywhere.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const WEEK = 7 * 24 * 3600_000;
+const DAY = 24 * 3600_000;
+const WEEK = 7 * DAY;
 const DAILY_LIMIT = Number(Deno.env.get('OMDB_DAILY_LIMIT')) || 1000;
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -59,6 +60,10 @@ Deno.serve(async (req) => {
     rt: num(rt) ? { score: rt } : null,
     metacritic: num(o.Metascore) ? { score: o.Metascore } : null,
   };
-  await db.from('tmdb_cache').upsert({ cache_key: cacheKey, body, fetched_at: new Date().toISOString() });
+  // Recent titles with no scores yet are likely to gain them soon: back-date the row so it expires in 1 day, not 7.
+  const empty = !body.imdb && !body.rt && !body.metacritic;
+  const recent = +(String(o.Year || '').match(/\d{4}/g)?.pop() || 0) >= new Date().getUTCFullYear() - 1;
+  const age = empty && recent ? WEEK - DAY : 0;
+  await db.from('tmdb_cache').upsert({ cache_key: cacheKey, body, fetched_at: new Date(Date.now() - age).toISOString() });
   return json(body);
 });
