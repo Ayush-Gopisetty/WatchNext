@@ -1,4 +1,4 @@
-import { details } from './api';
+import { related } from './api';
 import { epCount, isStarted, isFinished } from './store';
 
 export const GENRES = {
@@ -47,7 +47,7 @@ export async function recommend(lib) {
   const profile = tasteProfile(items);
   const affinity = Object.fromEntries(profile.genres.map((x) => [x.id, x.score]));
 
-  const results = await Promise.allSettled(sources.map((s) => details(s.type, s.id)));
+  const results = await Promise.allSettled(sources.map((s) => related(s.type, s.id)));
   const pool = new Map();
   results.forEach((r, i) => {
     if (r.status !== 'fulfilled') return;

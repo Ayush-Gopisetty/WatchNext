@@ -4,19 +4,39 @@ import { supabase } from './supabase';
 
 // All TMDB traffic goes through our Supabase edge function (key stays server-side, responses are cached).
 const cache = new Map();
-async function tmdb(path, params = {}) {
-  if (!supabase) throw new Error('NO_BACKEND');
+const unwrap = async (data, error) => {
+  if (error || data?.error) {
+    // supabase-js hides the response body behind a generic message; surface the real reason
+    const body = await error?.context?.json?.().catch(() => null);
+    throw new Error(body?.error || data?.error || error.message);
+  }
+  return data;
+};
+// Requests made in the same tick are sent as one edge-function call (one HTTP round trip, one DB cache read).
+let queue = [];
+function flush() {
+  const q = queue;
+  queue = [];
+  if (q.length === 1) {
+    const [{ path, params, res, rej }] = q;
+    return supabase.functions.invoke('tmdb', { body: { path, params } }).then(({ data, error }) => unwrap(data, error)).then(res, rej);
+  }
+  supabase.functions.invoke('tmdb', { body: { batch: q.map(({ path, params }) => ({ path, params })) } })
+    .then(async ({ data, error }) => {
+      await unwrap(data, error);
+      q.forEach((x, i) => (data.results[i].error ? x.rej(new Error(data.results[i].error)) : x.res(data.results[i].body)));
+    })
+    .catch((e) => q.forEach((x) => x.rej(e)));
+}
+function tmdb(path, params = {}) {
+  if (!supabase) return Promise.reject(new Error('NO_BACKEND'));
   const ck = path + JSON.stringify(params);
   if (cache.has(ck)) return cache.get(ck);
-  const p = supabase.functions.invoke('tmdb', { body: { path, params } }).then(async ({ data, error }) => {
-    if (error || data?.error) {
-      cache.delete(ck);
-      // supabase-js hides the response body behind a generic message; surface the real reason
-      const body = await error?.context?.json?.().catch(() => null);
-      throw new Error(body?.error || data?.error || error.message);
-    }
-    return data;
+  const p = new Promise((res, rej) => {
+    queue.push({ path, params, res, rej });
+    if (queue.length === 1) setTimeout(flush, 8);
   });
+  p.catch(() => cache.delete(ck));
   cache.set(ck, p);
   return p;
 }
@@ -148,6 +168,30 @@ export function ratings(imdbId) {
   return scores.get(imdbId);
 }
 
+// Just the episode count (tiny payload) — used to spot new episodes without pulling full details.
+export const episodeTotal = (id) => tmdb(`/tv/${id}`).then((r) => r.number_of_episodes);
+
+// Show basics only (no credits/recs/videos) — same request as episodeTotal, so the two share one cache entry.
+export const showLite = (id) => tmdb(`/tv/${id}`).then((r) => ({
+  ...norm(r, 'tv'), totalEpisodes: r.number_of_episodes, genreNames: (r.genres || []).map((g) => g.name), seasons: (r.seasons || []).filter((x) => x.season_number > 0),
+}));
+
+// Only the candidate lists recommend() needs, not cast/videos/keywords/etc.
+export const related = (type, id) =>
+  tmdb(`/${type}/${id}`, { append_to_response: 'recommendations,similar' }).then((r) => ({
+    recs: list(r.recommendations || { results: [] }, type),
+    similar: list(r.similar || { results: [] }, type),
+  }));
+
+// IMDb scores of episodes you've opened, kept in this browser so the episode list can show them without new requests.
+const EP_KEY = (id) => `epscores:${id}`;
+export function savedEpScores(showId) {
+  try { return JSON.parse(localStorage.getItem(EP_KEY(showId))) || {}; } catch { return {}; }
+}
+export function saveEpScore(showId, s, e, score) {
+  try { localStorage.setItem(EP_KEY(showId), JSON.stringify({ ...savedEpScores(showId), [`${s}x${e}`]: score })); } catch { /* storage unavailable */ }
+}
+
 export async function details(type, id) {
   const r = await tmdb(`/${type}/${id}`, { append_to_response: 'videos,credits,recommendations,similar,keywords,release_dates,content_ratings,external_ids' });
   return {
@@ -175,6 +219,21 @@ export function pickTrailer(vs = []) {
 }
 
 export const season = (id, n) => tmdb(`/tv/${id}/season/${n}`);
+// One episode with cast, crew, trailer and its IMDb id (for scores)
+export async function episode(id, s, e) {
+  const r = await tmdb(`/tv/${id}/season/${s}/episode/${e}`, { append_to_response: 'credits,videos,external_ids' });
+  const crew = r.crew || r.credits?.crew || [];
+  const by = (jobs) => crew.filter((c) => jobs.includes(c.job)).map((c) => ({ id: c.id, name: c.name, job: c.job }));
+  return {
+    name: r.name, overview: r.overview, still: r.still_path, airDate: r.air_date, runtime: r.runtime,
+    vote: r.vote_average, votes: r.vote_count, number: r.episode_number, season: r.season_number, type: r.episode_type,
+    imdbId: r.external_ids?.imdb_id || null,
+    directors: by(['Director']), writers: by(['Writer', 'Screenplay', 'Teleplay', 'Story']),
+    cast: [...(r.guest_stars || r.credits?.guest_stars || []), ...(r.credits?.cast || [])]
+      .filter((c, i, a) => a.findIndex((x) => x.id === c.id) === i).slice(0, 20),
+    trailer: pickTrailer(r.videos?.results),
+  };
+}
 export const episodeVideos = (id, s, e) =>
   tmdb(`/tv/${id}/season/${s}/episode/${e}/videos`).then((r) => pickTrailer(r.results)).catch(() => null);
 

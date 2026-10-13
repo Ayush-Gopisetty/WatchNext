@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { browse, search, details, IMG, GENRES, FLAVORS, genreFits } from './api';
+import { browse, search, episodeTotal, IMG, GENRES, FLAVORS, genreFits } from './api';
 import { Card, Row, Err, useAsync, usePaged, LoadMore, SkeletonGrid, SkeletonRecs } from './ui';
 import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
 import { recommend, tasteProfile } from './recommend';
@@ -63,7 +63,7 @@ export function Home() {
   const started = Object.values(lib.items).filter((i) => i.type === 'tv' && isStarted(i)).sort((a, b) => b.updatedAt - a.updatedAt);
   // ask TMDB (cached) how many episodes each followed show has now, to spot newly released ones
   const { data: latest } = useAsync(
-    () => Promise.all(started.slice(0, 15).map((i) => details('tv', i.id).then((d) => [i.key, d.totalEpisodes]).catch(() => null)))
+    () => Promise.all(started.slice(0, 15).map((i) => episodeTotal(i.id).then((n) => [i.key, n]).catch(() => null)))
       .then((r) => Object.fromEntries(r.filter(Boolean))),
     [started.slice(0, 15).map((i) => i.key).join()],
   );

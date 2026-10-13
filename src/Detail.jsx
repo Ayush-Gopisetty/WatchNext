@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { details, season, episodeVideos, ratings, IMG } from './api';
+import { details, season, episodeVideos, ratings, savedEpScores, IMG } from './api';
 import { Row, Trailer, Stars, Err, useAsync, SkeletonHero, SkeletonEpisodes, toast } from './ui';
 import { useLibrary, actions, epKey, epCount } from './store';
 
@@ -41,8 +41,8 @@ export default function Detail({ type, id }) {
   );
 }
 
-// Three separate critic/audience scores. Missing ones show N/A; nothing renders if the lookup isn't available.
-function Scores({ s }) {
+// Critic/audience scores. Only the ones we actually have are shown; nothing renders if there are none.
+export function Scores({ s }) {
   if (!s) return null;
   const mc = +s.metacritic?.score;
   const items = [
@@ -50,11 +50,13 @@ function Scores({ s }) {
     ['imdb', 'IMDb', s.imdb && `${s.imdb.score}/10`, s.imdb?.votes ? `${s.imdb.votes} votes` : ''],
     ['mc', 'Metacritic', s.metacritic && s.metacritic.score, mc >= 61 ? 'good' : mc >= 40 ? 'mixed' : s.metacritic ? 'bad' : ''],
   ];
+  const have = items.filter(([, , val]) => val);
+  if (!have.length) return null;
   return (
     <div className="scores">
-      {items.map(([k, label, val, tone]) => (
-        <div key={k} className={`score ${val ? '' : 'na'} ${k === 'imdb' ? '' : tone}`} title={label}>
-          <b>{val || 'N/A'}</b><span>{label}</span>
+      {have.map(([k, label, val, tone]) => (
+        <div key={k} className={`score ${k === 'imdb' ? '' : tone}`} title={label}>
+          <b>{val}</b><span>{label}</span>
         </div>
       ))}
     </div>
@@ -68,6 +70,7 @@ function Seasons({ d, me, onPlay, shield }) {
     return eps.length ? Math.max(...eps) : d.seasons[0]?.season_number ?? 1;
   });
   const { data, error, loading, retry } = useAsync(() => season(d.id, sn), [d.id, sn]);
+  const imdb = savedEpScores(d.id);
   const watched = (s, e) => !!me.eps?.[epKey(s, e)];
 
   const markSeason = (on) => {
@@ -89,10 +92,14 @@ function Seasons({ d, me, onPlay, shield }) {
 
   return (
     <section className="seasons">
-      <div className="tabs">{d.seasons.map((s) => (
-        <button key={s.season_number} className={sn === s.season_number ? 'on' : ''} onClick={() => setSn(s.season_number)}>
-          {s.name.length > 12 ? `S${s.season_number}` : s.name}
-        </button>))}</div>
+      {d.seasons.length > 1 && (
+        <select className="seasonpick" aria-label="Season" value={sn} onChange={(e) => setSn(+e.target.value)}>
+          {d.seasons.map((s) => (
+            <option key={s.season_number} value={s.season_number}>
+              {s.name || `Season ${s.season_number}`}{s.episode_count ? ` · ${s.episode_count} episodes` : ''}
+            </option>))}
+        </select>
+      )}
       {error ? <Err error={error} onRetry={retry} /> : loading ? <SkeletonEpisodes /> : (
         <>
           <div className="bulk">
@@ -109,7 +116,7 @@ function Seasons({ d, me, onPlay, shield }) {
                   <span className="play">▶</span>
                 </div>
                 <div className="epbody">
-                  <h4>{ep.episode_number}. {ep.name} <small>{[ep.air_date, ep.runtime && `${ep.runtime}m`, ep.vote_average > 0 && `★ ${ep.vote_average.toFixed(1)}`].filter(Boolean).join(' · ')}</small></h4>
+                  <h4>{ep.episode_number}. <a className="eplink" href={`#/title/tv/${d.id}/season/${sn}/episode/${ep.episode_number}`}>{ep.name}</a> <small>{[ep.air_date, ep.runtime && `${ep.runtime}m`, ep.vote_average > 0 && `★ ${ep.vote_average.toFixed(1)}`, imdb[`${sn}x${ep.episode_number}`] && `IMDb ${imdb[`${sn}x${ep.episode_number}`]}`].filter(Boolean).join(' · ')}</small></h4>
                   <p className={hide ? 'blur' : ''}>{ep.overview || 'No description yet.'}</p>
                   {hide && ep.overview && <small className="muted">Spoiler shield on — mark watched to reveal.</small>}
                 </div>

@@ -2,6 +2,7 @@ import { useHash, ThemeToggle, NotFound, ErrorBoundary, Toaster } from './ui';
 import SearchBox from './SearchBox';
 import { Home, Search, Library, ForYou, Settings } from './pages';
 import Detail from './Detail';
+import Episode from './Episode';
 import Auth from './Auth';
 import Person from './Person';
 import Login, { ResetPassword } from './Login';
@@ -10,7 +11,8 @@ export default function App() {
   const h = useHash();
   const parts = h.replace(/^#\/?/, '').split('/');
   let page;
-  if (parts[0] === 'title') page = <Detail key={h} type={parts[1]} id={parts[2]} />;
+  if (parts[0] === 'title' && parts[1] === 'tv' && parts[3] === 'season' && parts[5] === 'episode') page = <Episode key={h} id={parts[2]} s={+parts[4]} e={+parts[6]} />;
+  else if (parts[0] === 'title') page = <Detail key={h} type={parts[1]} id={parts[2]} />;
   else if (parts[0] === 'person') page = <Person key={h} id={parts[1]} />;
   else if (parts[0] === 'search') page = <Search q={decodeURIComponent(parts[1] || '')} />;
   else if (parts[0] === 'library') page = <Library />;
