@@ -25,7 +25,22 @@ const json = (body: unknown, status = 200) =>
 type Req = { path: string; params?: Record<string, unknown> };
 const keyOf = ({ path, params = {} }: Req) =>
   `${path}?${JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)))}`;
-const valid = (r: Req) => typeof r?.path === 'string' && ALLOW.some((a) => a.test(r.path));
+// Only the query parameters the app sends, with short plain values. Without this, anyone holding the public
+// anon key could invent endless parameter combinations, each one a new cache row and a new TMDB request.
+const PARAMS = new Set([
+  'page', 'query', 'include_adult', 'append_to_response', 'sort_by',
+  'with_genres', 'with_original_language', 'with_origin_country',
+  'vote_count.gte', 'vote_count.lte', 'vote_average.gte',
+  'primary_release_date.gte', 'primary_release_date.lte', 'first_air_date.gte', 'first_air_date.lte',
+  'with_runtime.gte', 'with_runtime.lte',
+]);
+const okParams = (params: Record<string, unknown> = {}) =>
+  typeof params === 'object' && params !== null && Object.entries(params).every(([k, v]) =>
+    PARAMS.has(k) && ['string', 'number', 'boolean'].includes(typeof v) && String(v).length <= (k === 'query' ? 100 : 120)
+    && (k !== 'page' || (Number.isInteger(+v) && +v >= 1 && +v <= 500)));
+const valid = (r: Req) => typeof r?.path === 'string' && ALLOW.some((a) => a.test(r.path)) && okParams(r.params);
+// Searches are endless and rarely repeated, so they're never stored in the shared cache table.
+const storable = (r: Req) => r.path !== '/search/multi';
 
 // Fetch from TMDB; `stale` is a cached body to fall back on if TMDB fails.
 async function fromTmdb({ path, params = {} }: Req, stale?: unknown) {
@@ -57,7 +72,7 @@ Deno.serve(async (req) => {
     const hit = byKey.get(keys[i]);
     if (hit && Date.now() - new Date(hit.fetched_at).getTime() < ttl(r.path)) return { body: hit.body };
     const out = await fromTmdb(r, hit?.body);
-    if (out.fresh) writes.push({ cache_key: keys[i], body: out.body, fetched_at: new Date().toISOString() });
+    if (out.fresh && storable(r)) writes.push({ cache_key: keys[i], body: out.body, fetched_at: new Date().toISOString() });
     return out;
   }));
   // one cache write for the whole batch

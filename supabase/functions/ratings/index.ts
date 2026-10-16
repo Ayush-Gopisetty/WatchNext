@@ -7,6 +7,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const DAY = 24 * 3600_000;
 const WEEK = 7 * DAY;
 const DAILY_LIMIT = Number(Deno.env.get('OMDB_DAILY_LIMIT')) || 1000;
+// Per-visitor share of the daily quota. Without it one script could spend the whole quota and hide scores for everyone.
+const PER_IP_LIMIT = Number(Deno.env.get('OMDB_PER_IP_LIMIT')) || 100;
+// Visitors are counted by a hash of their IP, so raw addresses are never stored.
+async function ipHash(req: Request) {
+  const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0].trim() || 'unknown';
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip)));
+  return Array.from(bytes.slice(0, 12), (b) => b.toString(16).padStart(2, '0')).join('');
+}
 const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -44,6 +52,13 @@ Deno.serve(async (req) => {
   const cacheKey = `omdb:${imdb_id}`;
   const { data: hit } = await db.from('tmdb_cache').select('body, fetched_at').eq('cache_key', cacheKey).maybeSingle();
   if (hit && Date.now() - new Date(hit.fetched_at).getTime() < WEEK) return json(hit.body);
+
+  // Only lookups that actually reach OMDb count against a visitor; cached titles are always free.
+  const ipKey = `omdb-ip:${day}:${await ipHash(req)}`;
+  const { data: mine } = await db.from('tmdb_cache').select('body').eq('cache_key', ipKey).maybeSingle();
+  const used = Number(mine?.body?.count) || 0;
+  if (used >= PER_IP_LIMIT) return json({ error: 'rate limited' }, 429);
+  await db.from('tmdb_cache').upsert({ cache_key: ipKey, body: { count: used + 1 }, fetched_at: new Date().toISOString() });
 
   await save({ count: today.count + 1 });
   const r = await fetch(`https://www.omdbapi.com/?i=${imdb_id}&apikey=${key}`);
