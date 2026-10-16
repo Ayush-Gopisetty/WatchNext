@@ -95,18 +95,23 @@ export function Card({ it, badge, sub }) {
   };
   // prefetch only when the pointer rests on the card, not while sweeping past it
   const intent = () => { clearTimeout(hover.current); hover.current = setTimeout(() => prefetch(it), 120); };
+  const subText = sub ?? (isPerson ? it.dept : [it.year, it.anime ? 'Anime' : it.kdrama ? 'K-Drama' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '));
   return (
-    <a className="card" href={isPerson ? `#/person/${it.id}` : `#/title/${it.type}/${it.id}`}
-      onPointerEnter={intent} onPointerLeave={() => clearTimeout(hover.current)} onFocus={intent}>
-      <div className="poster">
-        {it.poster ? <img loading="lazy" src={IMG(it.poster)} alt="" /> : <div className="noimg">{it.title}</div>}
-        {badge && <span className="badge">{badge}</span>}
-        {!isPerson && <button className={`quick ${saved ? 'on' : ''}`} onClick={toggle} aria-label={saved ? 'Remove from watchlist' : 'Add to watchlist'} title={saved ? 'In your watchlist' : 'Add to watchlist'}>{saved ? '✓' : '+'}</button>}
-        {!isPerson && it.overview && <div className="peek"><b>{it.vote ? `★ ${it.vote.toFixed(1)}` : ''}</b><p>{it.overview}</p></div>}
-      </div>
-      <div className="ctitle">{it.title}</div>
-      <div className="csub">{sub ?? (isPerson ? it.dept : [it.year, it.anime ? 'Anime' : it.kdrama ? 'K-Drama' : it.type === 'movie' ? 'Movie' : 'Series'].filter(Boolean).join(' · '))}</div>
-    </a>
+    // The watchlist button sits beside the link, not inside it: a button nested in a link is invalid HTML, and its
+    // "+" would leak into the link's spoken name. The hover overview is hidden from screen readers for the same reason.
+    <div className="card">
+      <a className="cardlink" href={isPerson ? `#/person/${it.id}` : `#/title/${it.type}/${it.id}`}
+        onPointerEnter={intent} onPointerLeave={() => clearTimeout(hover.current)} onFocus={intent}>
+        <div className="poster">
+          {it.poster ? <img loading="lazy" src={IMG(it.poster)} alt="" /> : <div className="noimg" aria-hidden="true">{it.title}</div>}
+          {badge && <span className="badge">{badge}</span>}
+          {!isPerson && it.overview && <div className="peek" aria-hidden="true"><b>{it.vote ? `★ ${it.vote.toFixed(1)}` : ''}</b><p>{it.overview}</p></div>}
+        </div>
+        <div className="ctitle">{it.title}</div>
+        <div className="csub">{subText}</div>
+      </a>
+      {!isPerson && <button className={`quick ${saved ? 'on' : ''}`} onClick={toggle} aria-label={saved ? `Remove ${it.title} from watchlist` : `Add ${it.title} to watchlist`} title={saved ? 'In your watchlist' : 'Add to watchlist'}>{saved ? '✓' : '+'}</button>}
+    </div>
   );
 }
 

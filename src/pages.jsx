@@ -65,12 +65,20 @@ export function Home() {
   const strips = DROP.includes(tab) && !full;
   const paged = usePaged((n) => (strips ? Promise.resolve([]) : coll ? collection(coll, n) : browse(tab, n, genre, flavor)), [tab, genre, flavor, strips, coll]);
   const [menu, setMenu] = useState(null); // { k, top, left } of the open genre menu
+  const menuRef = useRef(null);
+  const trigger = (k) => document.querySelector(`.tabs button[data-k="${k}"]`);
+  // Opening the menu moves focus into it (current genre first), so keyboard users land on the choices.
+  useEffect(() => {
+    const el = menuRef.current;
+    (el?.querySelector('button.on') || el?.querySelector('button'))?.focus({ preventScroll: true });
+  }, [menu?.k]);
   useEffect(() => {
     if (!menu) return;
     const born = Date.now();
-    // the browser may scroll a half-hidden tab into view as it's tapped; don't treat that as the user scrolling away
-    const close = (e) => !(e?.type === 'scroll' && Date.now() - born < 400) && setMenu(null);
-    const esc = (e) => e.key === 'Escape' && close();
+    // the browser may scroll a half-hidden tab into view as it's tapped; don't treat that as the user scrolling away,
+    // and scrolling inside the menu itself (e.g. arrowing down a long genre list) isn't leaving it either
+    const close = (e) => !(e?.type === 'scroll' && (Date.now() - born < 400 || menuRef.current?.contains(e.target))) && setMenu(null);
+    const esc = (e) => { if (e.key === 'Escape') { setMenu(null); trigger(menu.k)?.focus(); } };
     addEventListener('click', close); addEventListener('scroll', close, true); addEventListener('resize', close); addEventListener('keydown', esc);
     return () => { removeEventListener('click', close); removeEventListener('scroll', close, true); removeEventListener('resize', close); removeEventListener('keydown', esc); };
   }, [menu]);
@@ -98,12 +106,24 @@ export function Home() {
       <Row title="New episodes" items={fresh} badge={(i) => `${latest[i.key] - i.total} new`} />
       <Row title="Continue watching" items={resume} badge={(i) => `${epCount(i)}/${i.total || '?'}`} />
       <div className="tabs">{TABS.map(([k, l]) => DROP.includes(k) ? (
-        <button key={k} className={`dd ${tab === k ? 'on' : ''}`} aria-haspopup="listbox" aria-expanded={menu?.k === k} onClick={(e) => openMenu(e, k)}>
+        <button key={k} data-k={k} className={`dd ${tab === k ? 'on' : ''}`} aria-expanded={menu?.k === k} aria-controls="genre-menu" onClick={(e) => openMenu(e, k)}>
           {l}{tab === k && genre ? ` · ${genre}` : ''} <span aria-hidden>▾</span>
         </button>
       ) : <button key={k} className={tab === k ? 'on' : ''} onClick={() => pick(k, null)}>{l}</button>)}</div>
       {menu && (
-        <ul className="ddmenu" role="listbox" style={{ top: menu.top, left: menu.left }} onClick={(e) => e.stopPropagation()}>
+        <ul id="genre-menu" ref={menuRef} className="ddmenu" aria-label={`${TABS.find(([k]) => k === menu.k)[1]} genres`} style={{ top: menu.top, left: menu.left }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            // Up/Down/Home/End move between genres
+            const all = [...menuRef.current.querySelectorAll('button')];
+            const i = all.indexOf(document.activeElement);
+            const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: all.length - 1 }[e.key];
+            if (to === undefined) return;
+            e.preventDefault();
+            all[(to + all.length) % all.length].focus();
+          }}
+          // tabbing out closes it (but not when focus goes back to its own tab button, which toggles it)
+          onBlur={(e) => { if (!menuRef.current?.contains(e.relatedTarget) && e.relatedTarget !== trigger(menu.k)) setMenu(null); }}>
           <li><button className={tab === menu.k && !genre ? 'on' : ''} onClick={() => pick(menu.k, null)}>All {TABS.find(([k]) => k === menu.k)[1].toLowerCase()}</button></li>
           {GENRES.filter(([g]) => genreFits(g, menu.k)).map(([g]) => (
             <li key={g}><button className={tab === menu.k && genre === g ? 'on' : ''} onClick={() => pick(menu.k, g)}>{g}</button></li>
@@ -112,6 +132,7 @@ export function Home() {
       )}
       {sections ? (
         <>
+          <h1 className="sr-only">Discover · {TABS.find(([k]) => k === tab)[1]}</h1>
           {tab === 'all' && <GenreRow key="top10" kind="all" coll="top10" rank title="Top 10 this week" onAll={() => seeAll(null, null)} />}
           {tab !== 'all' && <GenreRow key={`${tab}-popular`} kind={tab} genre={null} title={LEAD[tab] || `Popular ${TABS.find(([k]) => k === tab)[1].toLowerCase()}`} onAll={() => seeAll(null, null)} />}
           {tab === 'all' && COLLECTIONS.filter(([c]) => c !== 'top10').map(([c, l]) => (
@@ -147,7 +168,7 @@ export function Search({ q }) {
   const data = paged.items;
   return (
     <>
-      <h2>Results for “{q}”</h2>
+      <h1 className="as-h2">Results for “{q}”</h1>
       {paged.error && !data.length ? <Err error={paged.error} onRetry={paged.retry} /> : paged.loading && !data.length ? <SkeletonGrid n={10} /> :
         data.length ? (
           <>
@@ -177,6 +198,7 @@ export function Library() {
   const names = { watching: 'In progress', watchlist: 'Watchlist', finished: 'Finished', rated: 'Rated' };
   return (
     <>
+      <h1 className="sr-only">My list</h1>
       <div className="tabs">{KINDS.map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
       <div className="tabs">{Object.keys(groups).map((k) => <button key={k} className={f === k ? 'on' : ''} onClick={() => setF(k)}>{names[k]} ({groups[k].length})</button>)}</div>
       {groups[f].length ? (
@@ -213,6 +235,7 @@ export function ForYou() {
   const recs = (data?.recs || []).filter((r) => !lib.items[r.key]?.dismissed).filter((r) => kind === 'all' || (kind === 'anime' ? r.anime : kind === 'kdrama' ? r.kdrama : kind === 'movie' ? r.type === 'movie' : r.type === 'tv' && !r.anime && !r.kdrama));
   return (
     <>
+      <h1 className="sr-only">For you</h1>
       <section className="dna">
         <h2>Your taste</h2>
         {liked.length ? liked.slice(0, 6).map((g) => (
@@ -260,7 +283,7 @@ export function Settings() {
   const { spoilerShield } = useLibrary();
   return (
     <div className="settings">
-      <h2>Settings</h2>
+      <h1 className="as-h2">Settings</h1>
       <label className="check"><input type="checkbox" checked={spoilerShield} onChange={(e) => actions.setShield(e.target.checked)} /> Spoiler shield: blur images and plots of episodes you haven't watched yet</label>
     </div>
   );

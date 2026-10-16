@@ -93,6 +93,7 @@ function Seasons({ d, me, onPlay, shield }) {
 
   return (
     <section className="seasons">
+      <h2 className="sr-only">Episodes</h2>
       {d.seasons.length > 1 && (
         <select className="seasonpick" aria-label="Season" value={sn} onChange={(e) => setSn(+e.target.value)}>
           {d.seasons.map((s) => (
@@ -117,7 +118,7 @@ function Seasons({ d, me, onPlay, shield }) {
                   <span className="play">▶</span>
                 </div>
                 <div className="epbody">
-                  <h4>{ep.episode_number}. <a className="eplink" href={`#/title/tv/${d.id}/season/${sn}/episode/${ep.episode_number}`}>{ep.name}</a> <small>{[ep.air_date, ep.runtime && `${ep.runtime}m`, ep.vote_average > 0 && `★ ${ep.vote_average.toFixed(1)}`, imdb[`${sn}x${ep.episode_number}`] && `IMDb ${imdb[`${sn}x${ep.episode_number}`]}`].filter(Boolean).join(' · ')}</small></h4>
+                  <h3>{ep.episode_number}. <a className="eplink" href={`#/title/tv/${d.id}/season/${sn}/episode/${ep.episode_number}`}>{ep.name}</a> <small>{[ep.air_date, ep.runtime && `${ep.runtime}m`, ep.vote_average > 0 && `★ ${ep.vote_average.toFixed(1)}`, imdb[`${sn}x${ep.episode_number}`] && `IMDb ${imdb[`${sn}x${ep.episode_number}`]}`].filter(Boolean).join(' · ')}</small></h3>
                   <p className={hide ? 'blur' : ''}>{ep.overview || 'No description yet.'}</p>
                   {hide && ep.overview && <small className="muted">Spoiler shield on — mark watched to reveal.</small>}
                 </div>
