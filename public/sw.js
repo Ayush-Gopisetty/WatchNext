@@ -1,6 +1,6 @@
 // Makes WatchNext installable and lets the app shell open offline.
 // Only same-origin files are cached. Supabase and TMDB calls always go to the network, so data is never stale.
-const CACHE = 'watchnext-shell-v1';
+const CACHE = 'watchnext-shell-v2';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './manifest.webmanifest'])).then(() => self.skipWaiting()));
