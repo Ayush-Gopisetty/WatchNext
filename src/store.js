@@ -108,6 +108,10 @@ export const actions = {
   rate(item, rating) {
     upsert(item, { rating: state.items[item.key]?.rating === rating ? 0 : rating });
   },
+  // "Not interested": hides it from For you and counts as a mild negative for its genres.
+  dismiss(item) {
+    upsert(item, { dismissed: !state.items[item.key]?.dismissed });
+  },
   toggleWatchlist(item) {
     upsert(item, { watchlist: !state.items[item.key]?.watchlist });
   },
@@ -123,3 +127,8 @@ export const actions = {
 export const epCount = (it) => Object.keys(it.eps || {}).length;
 export const isStarted = (it) => it.type === 'movie' ? it.watched : epCount(it) > 0;
 export const isFinished = (it) => it.type === 'movie' ? it.watched : it.total > 0 && epCount(it) >= it.total;
+
+// Started a show, then drifted away: under half watched and untouched for a while.
+const ABANDON_AFTER = 45 * 24 * 60 * 60 * 1000;
+export const isAbandoned = (it) => it.type === 'tv' && epCount(it) > 0 && !isFinished(it) && !it.rating && !it.watchlist
+  && (!it.total || epCount(it) / it.total < 0.5) && Date.now() - (it.updatedAt || 0) > ABANDON_AFTER;

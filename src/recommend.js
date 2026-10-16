@@ -1,5 +1,5 @@
 import { related } from './api';
-import { epCount, isStarted, isFinished } from './store';
+import { epCount, isStarted, isFinished, isAbandoned } from './store';
 
 export const GENRES = {
   28: 'Action', 12: 'Adventure', 16: 'Animation', 35: 'Comedy', 80: 'Crime', 99: 'Documentary', 18: 'Drama',
@@ -16,7 +16,9 @@ const fold = (g) => FOLD[g] || g;
 export function weight(it) {
   if (it.rating) return (it.rating - 2.5) / 2.5; // 1★ => -0.6 ... 5★ => +1
   if (isFinished(it)) return 0.8;
+  if (isAbandoned(it)) return -0.2;
   if (isStarted(it)) return 0.4 + Math.min(0.3, epCount(it) / 40);
+  if (it.dismissed) return -0.3;
   return 0;
 }
 
@@ -37,17 +39,31 @@ export function tasteProfile(items) {
   return { genres, anime, movie, tv, n };
 }
 
+// TMDB's recommendations for a title barely change, so keep them in this browser for a day.
+const REL_TTL = 24 * 60 * 60 * 1000;
+const REL_KEY = (type, id) => `related:${type}:${id}`;
+function cachedRelated(type, id) {
+  try {
+    const hit = JSON.parse(localStorage.getItem(REL_KEY(type, id)));
+    if (hit && Date.now() - hit.at < REL_TTL) return Promise.resolve(hit.data);
+  } catch { /* storage unavailable or corrupt entry */ }
+  return related(type, id).then((data) => {
+    try { localStorage.setItem(REL_KEY(type, id), JSON.stringify({ at: Date.now(), data })); } catch { /* quota or private mode */ }
+    return data;
+  });
+}
+
 // Candidate pool = TMDB "recommendations" + "similar" of the titles you liked most,
 // re-ranked by your own genre profile so it's personal, not just "popular".
 export async function recommend(lib) {
   const items = Object.values(lib.items);
-  const seen = new Set(items.filter((i) => isStarted(i) || i.rating).map((i) => i.key));
+  const seen = new Set(items.filter((i) => isStarted(i) || i.rating || i.dismissed).map((i) => i.key));
   const sources = items.filter((i) => weight(i) > 0.3).sort((a, b) => weight(b) - weight(a) || b.updatedAt - a.updatedAt).slice(0, 8);
   if (!sources.length) return { recs: [], profile: tasteProfile(items) };
   const profile = tasteProfile(items);
   const affinity = Object.fromEntries(profile.genres.map((x) => [x.id, x.score]));
 
-  const results = await Promise.allSettled(sources.map((s) => related(s.type, s.id)));
+  const results = await Promise.allSettled(sources.map((s) => cachedRelated(s.type, s.id)));
   const pool = new Map();
   results.forEach((r, i) => {
     if (r.status !== 'fulfilled') return;
@@ -70,9 +86,13 @@ export async function recommend(lib) {
     return { ...c, raw };
   });
   scored.sort((a, b) => b.raw - a.raw);
-  const top = scored[0]?.raw || 1, low = scored[scored.length - 1]?.raw || 0;
-  const recs = scored.slice(0, 40).map((c) => ({
-    ...c, match: Math.round(60 + 38 * ((c.raw - low) / (top - low || 1))),
-  }));
+  // Fixed scale, so the number means the same thing every run: raw 0 => 45%, rising towards 97%.
+  // A thin library hasn't earned a confident score, so pull it towards 50% until there's enough history.
+  const confidence = Math.min(1, profile.n / 8);
+  const match = (raw) => {
+    const full = 45 + 52 * (1 - Math.exp(-Math.max(raw, 0) / 1.3));
+    return Math.round(50 + (full - 50) * confidence);
+  };
+  const recs = scored.slice(0, 40).map((c) => ({ ...c, match: match(c.raw) }));
   return { recs, profile };
 }
