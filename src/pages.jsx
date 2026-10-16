@@ -198,7 +198,9 @@ export function Library() {
 export function ForYou() {
   const lib = useLibrary();
   const [kind, setKind] = useState('all');
-  const sig = Object.values(lib.items).map((i) => `${i.key}${i.rating || ''}${isStarted(i) ? 1 : 0}${isFinished(i) ? 1 : 0}`).join();
+  // Recompute only when the history that drives recommendations changes. Watchlist adds and dismissals
+  // are applied on screen instead, otherwise deciding on a title would reload the list under the user.
+  const sig = Object.values(lib.items).filter((i) => i.rating || isStarted(i) || isFinished(i)).map((i) =>`${i.key}${i.rating || ''}${isStarted(i) ? 1 : 0}${isFinished(i) ? 1 : 0}`).join();
   const { data, error, loading, retry } = useAsync(() => recommend(lib), [sig]);
   const profile = data?.profile || tasteProfile(Object.values(lib.items));
   if (error) return <Err error={error} onRetry={retry} />;

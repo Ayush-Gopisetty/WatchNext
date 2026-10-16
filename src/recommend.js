@@ -86,13 +86,11 @@ export async function recommend(lib) {
     return { ...c, raw };
   });
   scored.sort((a, b) => b.raw - a.raw);
-  // Fixed scale, so the number means the same thing every run: raw 0 => 45%, rising towards 97%.
-  // A thin library hasn't earned a confident score, so pull it towards 50% until there's enough history.
-  const confidence = Math.min(1, profile.n / 8);
-  const match = (raw) => {
-    const full = 45 + 52 * (1 - Math.exp(-Math.max(raw, 0) / 1.3));
-    return Math.round(50 + (full - 50) * confidence);
-  };
+  // Fixed scale, so the number means the same thing every run. Raw scores of real candidates land
+  // between about 0.5 (weak) and 2.7 (excellent), so that range maps onto 50% .. ceiling.
+  // A thin library hasn't earned a confident score, so it gets a lower ceiling until there's more history.
+  const ceiling = 70 + 28 * Math.min(1, profile.n / 8);
+  const match = (raw) => Math.round(50 + (ceiling - 50) * Math.min(1, Math.max(0, (raw - 0.5) / 2.2)));
   const recs = scored.slice(0, 40).map((c) => ({ ...c, match: match(c.raw) }));
   return { recs, profile };
 }

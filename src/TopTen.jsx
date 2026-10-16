@@ -13,12 +13,16 @@ export default function TopTen({ recs }) {
   const [choice, setChoice] = useState({}); // key -> 'yes' | 'no'
   const timer = useRef();
   const touchX = useRef(null);
+  const root = useRef();
+  const moved = useRef(false);
 
   useEffect(() => { setDeck(pick()); setI(0); setChoice({}); }, [recs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const last = deck.length; // the summary slide
-  const go = (n) => setI(Math.max(0, Math.min(last, n)));
+  const go = (n) => { moved.current = true; setI(Math.max(0, Math.min(last, n))); };
+  // The slide you just used becomes inert, which would drop focus to the page and kill the arrow keys.
+  useEffect(() => { if (moved.current) root.current?.focus({ preventScroll: true }); }, [i]);
 
   // Set the end state explicitly rather than toggling, so switching your mind never leaves both flags on.
   const decide = (r, want) => {
@@ -56,7 +60,7 @@ export default function TopTen({ recs }) {
   const no = deck.filter((r) => choice[r.key] === 'no').length;
 
   return (
-    <section className="top10" aria-roledescription="carousel" aria-label="Your top 10" tabIndex={0} onKeyDown={onKey}
+    <section ref={root} className="top10" aria-roledescription="carousel" aria-label="Your top 10" tabIndex={0} onKeyDown={onKey}
       onTouchStart={(e) => { touchX.current = e.touches[0].clientX; }} onTouchEnd={onTouchEnd}>
       <h2>Your top 10 <small>{Math.min(i + 1, last)} / {last}</small></h2>
       <div className="t10view">
