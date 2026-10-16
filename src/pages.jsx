@@ -1,14 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
-import { browse, search, episodeTotal, IMG, GENRES, FLAVORS, genreFits } from './api';
-import { Card, Row, Err, useAsync, usePaged, LoadMore, SkeletonGrid, SkeletonRecs } from './ui';
-import { useLibrary, actions, epCount, isFinished, isStarted } from './store';
-import { recommend, tasteProfile } from './recommend';
+import { browse, collection, COLLECTIONS, search, episodeTotal, IMG, GENRES, FLAVORS, genreFits } from './api';
+import { Card, Row, Err, useAsync, useHash, usePaged, LoadMore, SkeletonGrid, SkeletonRecs, Stars, toast } from './ui';
+import { useLibrary, actions, epCount, isFinished, isStarted, isAbandoned } from './store';
+import { recommend, tasteProfile, weight } from './recommend';
+import TopTen from './TopTen';
 
-const DROP = ['movie', 'tv', 'anime', 'kdrama']; // tabs that open a genre menu
+const DROP = ['all', 'movie', 'tv', 'anime', 'kdrama', 'top']; // tabs that open a genre menu and show one strip per genre
+const LEAD = { all: 'Trending now', top: 'Top rated' }; // title of the first strip when no genre is picked
 const TABS = [['all', 'Trending'], ['movie', 'Movies'], ['tv', 'Shows'], ['anime', 'Anime'], ['kdrama', 'K-Dramas'], ['top', 'Top rated']];
 
+// Where you are on Discover lives in the URL, so back/forward work and a link to "Anime → Action" can be shared:
+//   #/browse/anime  ·  #/browse/anime/genre/Action  ·  #/browse/anime/genre/Action/top  ·  #/browse/anime/all  ·  #/browse/all/c/short
+const BLANK = { tab: 'all', genre: null, flavor: null, coll: null, full: false };
+function parseBrowse(h) {
+  const p = h.replace(/^#\/?/, '').split('/').map((x) => { try { return decodeURIComponent(x); } catch { return x; } });
+  if (p[0] !== 'browse' || !TABS.some(([k]) => k === p[1])) return BLANK;
+  const tab = p[1];
+  if (p[2] === 'genre' && GENRES.some(([g]) => g === p[3])) {
+    const flavor = FLAVORS.some(([f]) => f === p[4]) ? p[4] : null;
+    return { ...BLANK, tab, genre: p[3], flavor, full: !!flavor };
+  }
+  if (p[2] === 'all') return { ...BLANK, tab, full: true };
+  if (tab === 'all' && p[2] === 'c' && COLLECTIONS.some(([c]) => c === p[3])) return { ...BLANK, coll: p[3], full: true };
+  return { ...BLANK, tab };
+}
+const enc = encodeURIComponent;
+function browseHref({ tab, genre, flavor, coll, full }) {
+  if (coll) return `#/browse/all/c/${coll}`;
+  if (genre) return `#/browse/${tab}/genre/${enc(genre)}${flavor ? `/${flavor}` : ''}`;
+  if (full) return `#/browse/${tab}/all`;
+  return tab === 'all' ? '#/' : `#/browse/${tab}`;
+}
+const go = (to) => { location.hash = browseHref({ ...BLANK, ...to }); };
+
 // One Netflix-style strip: loads its titles only once it scrolls near the viewport.
-function GenreRow({ kind, genre, flavor, title, onAll }) {
+function GenreRow({ kind, genre, flavor, coll, title, onAll, rank }) {
   const ref = useRef(null);
   const [seen, setSeen] = useState(typeof IntersectionObserver === 'undefined');
   useEffect(() => {
@@ -17,7 +43,7 @@ function GenreRow({ kind, genre, flavor, title, onAll }) {
     io.observe(ref.current);
     return () => io.disconnect();
   }, [seen]);
-  const { data, error } = useAsync(() => (seen ? browse(kind, 1, genre, flavor) : Promise.resolve(null)), [seen, kind, genre, flavor]);
+  const { data, error } = useAsync(() => (seen ? (coll ? collection(coll, 1) : browse(kind, 1, genre, flavor)) : Promise.resolve(null)), [seen, kind, genre, flavor, coll]);
   if (error || (data && !data.length)) return null;
   return (
     <section className="row" ref={ref}>
@@ -26,7 +52,7 @@ function GenreRow({ kind, genre, flavor, title, onAll }) {
         {onAll && <button className="link" onClick={onAll}>See all ›</button>}
       </div>
       <div className="strip">
-        {data ? data.map((it) => <Card key={it.key} it={it} />) : Array.from({ length: 8 }, (_, i) => <div key={i} className="sk rowsk" />)}
+        {data ? data.map((it, n) => <Card key={it.key} it={it} badge={rank ? `#${n + 1}` : undefined} />) : Array.from({ length: 8 }, (_, i) => <div key={i} className="sk rowsk" />)}
       </div>
     </section>
   );
@@ -34,13 +60,10 @@ function GenreRow({ kind, genre, flavor, title, onAll }) {
 
 export function Home() {
   const lib = useLibrary();
-  const [tab, setTab] = useState('all');
-  const [genre, setGenre] = useState(null);
-  const [flavor, setFlavor] = useState(null);
-  const [full, setFull] = useState(false); // true → show the complete paged grid instead of strips
+  const { tab, genre, flavor, coll, full } = parseBrowse(useHash()); // full → the complete paged grid instead of strips
   const sections = DROP.includes(tab) && !genre && !full; // Movies/Shows/Anime with no genre picked → one strip per genre
   const strips = DROP.includes(tab) && !full;
-  const paged = usePaged((n) => (strips ? Promise.resolve([]) : browse(tab, n, genre, flavor)), [tab, genre, flavor, strips]);
+  const paged = usePaged((n) => (strips ? Promise.resolve([]) : coll ? collection(coll, n) : browse(tab, n, genre, flavor)), [tab, genre, flavor, strips, coll]);
   const [menu, setMenu] = useState(null); // { k, top, left } of the open genre menu
   useEffect(() => {
     if (!menu) return;
@@ -51,8 +74,8 @@ export function Home() {
     addEventListener('click', close); addEventListener('scroll', close, true); addEventListener('resize', close); addEventListener('keydown', esc);
     return () => { removeEventListener('click', close); removeEventListener('scroll', close, true); removeEventListener('resize', close); removeEventListener('keydown', esc); };
   }, [menu]);
-  const pick = (k, g) => { setTab(k); setGenre(g); setFlavor(null); setFull(false); setMenu(null); };
-  const seeAll = (g, f) => { setGenre(g); setFlavor(f); setFull(true); };
+  const pick = (k, g) => { setMenu(null); go({ tab: k, genre: g }); };
+  const seeAll = (g, f) => go({ tab, genre: g, flavor: f, full: true });
   const openMenu = (e, k) => {
     e.stopPropagation();
     if (menu?.k === k) return setMenu(null);
@@ -89,7 +112,11 @@ export function Home() {
       )}
       {sections ? (
         <>
-          <GenreRow key={`${tab}-popular`} kind={tab} genre={null} title={`Popular ${TABS.find(([k]) => k === tab)[1].toLowerCase()}`} onAll={() => seeAll(null, null)} />
+          {tab === 'all' && <GenreRow key="top10" kind="all" coll="top10" rank title="Top 10 this week" onAll={() => seeAll(null, null)} />}
+          {tab !== 'all' && <GenreRow key={`${tab}-popular`} kind={tab} genre={null} title={LEAD[tab] || `Popular ${TABS.find(([k]) => k === tab)[1].toLowerCase()}`} onAll={() => seeAll(null, null)} />}
+          {tab === 'all' && COLLECTIONS.filter(([c]) => c !== 'top10').map(([c, l]) => (
+            <GenreRow key={c} kind="all" coll={c} title={l} onAll={() => go({ coll: c })} />
+          ))}
           {GENRES.filter(([g]) => genreFits(g, tab)).map(([g]) => (
             <GenreRow key={`${tab}-${g}`} kind={tab} genre={g} title={g} onAll={() => pick(tab, g)} />
           ))}
@@ -103,8 +130,8 @@ export function Home() {
         <>
           {full && (
             <div className="fullhead">
-              <button className="link" onClick={() => (genre ? (setFull(false), setFlavor(null)) : pick(tab, null))}>‹ Back</button>
-              <h1 className="genrehead">{[flavor && FLAVORS.find(([f]) => f === flavor)[1], genre, genre ? '' : 'All', TABS.find(([k]) => k === tab)[1].toLowerCase()].filter((x) => x !== '' && x !== null).join(' ')}</h1>
+              <button className="link" onClick={() => (coll ? go({}) : genre ? go({ tab, genre }) : go({ tab }))}>‹ Back</button>
+              <h1 className="genrehead">{coll ? COLLECTIONS.find(([c]) => c === coll)[1] : [flavor && FLAVORS.find(([f]) => f === flavor)[1], genre, genre ? '' : 'All', TABS.find(([k]) => k === tab)[1].toLowerCase()].filter((x) => x !== '' && x !== null).join(' ')}</h1>
             </div>
           )}
           <div className="grid">{paged.items.map((it) => <Card key={it.key} it={it} />)}</div>
@@ -145,8 +172,9 @@ export function Library() {
     watching: all.filter((i) => i.type === 'tv' && isStarted(i) && !isFinished(i)),
     watchlist: all.filter((i) => i.watchlist && !isStarted(i)),
     finished: all.filter((i) => isFinished(i)),
+    rated: all.filter((i) => i.rating > 0),
   };
-  const names = { watching: 'In progress', watchlist: 'Watchlist', finished: 'Finished' };
+  const names = { watching: 'In progress', watchlist: 'Watchlist', finished: 'Finished', rated: 'Rated' };
   return (
     <>
       <div className="tabs">{KINDS.map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
@@ -156,6 +184,8 @@ export function Library() {
           {groups[f].map((it) => (
             <div key={it.key} className="libitem">
               <Card it={it} sub={it.type === 'tv' ? `${epCount(it)}/${it.total || '?'} episodes` : it.year} />
+              {f === 'rated' && <Stars value={it.rating} onChange={(n) => actions.rate(it, n)}
+                onClear={() => { const was = it.rating; actions.rate(it, 0); toast(`Cleared rating for ${it.title}`, () => actions.rate(it, was)); }} />}
               {it.type === 'tv' && it.total > 0 && <div className="bar"><i style={{ width: `${Math.min(100, (epCount(it) / it.total) * 100)}%` }} /></div>}
             </div>
           ))}
@@ -172,15 +202,36 @@ export function ForYou() {
   const { data, error, loading, retry } = useAsync(() => recommend(lib), [sig]);
   const profile = data?.profile || tasteProfile(Object.values(lib.items));
   if (error) return <Err error={error} onRetry={retry} />;
-  const recs = (data?.recs || []).filter((r) => kind === 'all' || (kind === 'anime' ? r.anime : kind === 'kdrama' ? r.kdrama : kind === 'movie' ? r.type === 'movie' : r.type === 'tv' && !r.anime && !r.kdrama));
+  const liked = profile.genres.filter((g) => g.score > 0.05); // the bars are things you like; dislikes get their own line
+  // "Showing less of" only reflects what you explicitly marked (low ratings, Not interested), never inferred drop-offs.
+  const explicit = Object.values(lib.items).filter((i) => !isAbandoned(i) || i.dismissed);
+  const disliked = tasteProfile(explicit).genres.filter((g) => g.score < -0.05);
+  // Titles pulling the profile down, with the reason, so a "showing less of" line is never a mystery.
+  const negatives = Object.values(lib.items).filter((i) => weight(i) < 0 && (!isAbandoned(i) || i.dismissed));
+  const recs = (data?.recs || []).filter((r) => !lib.items[r.key]?.dismissed).filter((r) => kind === 'all' || (kind === 'anime' ? r.anime : kind === 'kdrama' ? r.kdrama : kind === 'movie' ? r.type === 'movie' : r.type === 'tv' && !r.anime && !r.kdrama));
   return (
     <>
       <section className="dna">
         <h2>Your taste</h2>
-        {profile.genres.length ? profile.genres.slice(0, 6).map((g) => (
+        {liked.length ? liked.slice(0, 6).map((g) => (
           <div key={g.id} className="dnarow"><span>{g.name}</span><div className="dnabar"><i className={g.score < 0 ? 'neg' : ''} style={{ width: `${Math.abs(g.score) * 100}%` }} /></div></div>
         )) : <p className="muted">Watch or rate a few things and your taste profile builds itself here.</p>}
+        {disliked.length > 0 && (
+          <details className="why-less">
+            <summary className="muted">Showing less of: {disliked.slice(-3).reverse().map((g) => g.name).join(', ')} <u>Why?</u></summary>
+            <ul>
+              {negatives.map((it) => (
+                <li key={it.key}>
+                  <a href={`#/title/${it.type}/${it.id}`}>{it.title}</a>
+                  <span className="muted"> · {it.rating ? `rated ${it.rating}★` : 'not interested'}</span>
+                  {it.dismissed && !it.rating && <button className="clear" onClick={() => actions.dismiss(it)}>Undo</button>}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
+      {!loading && data?.recs.length > 0 && <TopTen recs={data.recs} />}
       <div className="tabs">{[['all', 'Everything'], ['tv', 'Shows'], ['movie', 'Movies'], ['anime', 'Anime'], ['kdrama', 'K-Dramas']].map(([k, l]) => <button key={k} className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
       {loading ? <SkeletonRecs /> : !recs.length ? <div className="empty">Mark a few titles as watched (and rate them ★) to get recommendations.</div> : (
         <div className="recs">
@@ -193,6 +244,8 @@ export function ForYou() {
                 <p className="why">Because you watched {r.because.slice(0, 3).join(', ')}</p>
                 <p className="ov">{r.overview}</p>
               </div>
+              <button className="dismiss" aria-label={`Not interested in ${r.title}`} title="Not interested"
+                onClick={(e) => { e.preventDefault(); actions.dismiss(r); toast(`Hidden ${r.title}`, () => actions.dismiss(r)); }}>✕</button>
             </a>
           ))}
         </div>

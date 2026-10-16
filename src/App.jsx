@@ -20,9 +20,10 @@ export default function App() {
   else if (parts[0] === 'reset') page = <ResetPassword />;
   else if (parts[0] === 'login') page = <Login />;
   else if (parts[0] === 'settings') page = <Settings />;
-  else if (parts[0] === '' || parts[0].startsWith('access_token')) page = <Home />;
+  else if (parts[0] === '' || parts[0] === 'browse' || parts[0].startsWith('access_token')) page = <Home />;
   else page = <NotFound />;
-  const on = (p) => (parts[0] === p ? 'on' : '');
+  const on = (p) => (parts[0] === p || (p === '' && parts[0] === 'browse') ? 'on' : '');
+  const home = parts[0] === '' || parts[0] === 'browse'; // moving between Discover tabs keeps the page mounted
   return (
     <>
       <header>
@@ -37,7 +38,7 @@ export default function App() {
         <ThemeToggle />
         <Auth />
       </header>
-      <main key={h} className="page"><ErrorBoundary>{page}</ErrorBoundary></main>
+      <main key={home ? 'home' : h} className="page"><ErrorBoundary>{page}</ErrorBoundary></main>
       <footer>This product uses the TMDB API but is not endorsed or certified by <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer">TMDB</a>.</footer>
       <nav className="tabbar" aria-label="Main">
         {[['', '🏠', 'Discover'], ['foryou', '✨', 'For you'], ['library', '📚', 'My list'], ['settings', '⚙️', 'Settings']].map(([k, ic, l]) => (

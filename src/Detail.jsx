@@ -27,7 +27,7 @@ export default function Detail({ type, id }) {
               ? <button className={`btn ${me.watched ? 'on' : 'ghost'}`} onClick={() => actions.toggleMovie(d)}>{me.watched ? '✓ Watched' : 'Mark watched'}</button>
               : <span className="muted">{epCount(me)}/{d.totalEpisodes} episodes watched</span>}
             <button className={`btn ${me.watchlist ? 'on' : 'ghost'}`} onClick={() => { actions.toggleWatchlist(d); toast(me.watchlist ? 'Removed from your watchlist' : 'Added to your watchlist', () => actions.toggleWatchlist(d)); }}>{me.watchlist ? '✓ In watchlist' : '+ Watchlist'}</button>
-            <Stars value={me.rating} onChange={(n) => actions.rate(d, n)} />
+            <Stars value={me.rating} onChange={(n) => actions.rate(d, n)} onClear={() => { const was = me.rating; actions.rate(d, 0); toast('Rating cleared', () => actions.rate(d, was)); }} />
           </div>
         </div>
       </div>

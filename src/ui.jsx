@@ -143,11 +143,13 @@ export function Trailer({ video, fallbackNote, onClose }) {
   );
 }
 
-export const Stars = ({ value = 0, onChange }) => (
+// Click a star to rate (or change the rating); "Clear" appears once there's a rating to remove.
+export const Stars = ({ value = 0, onChange, onClear }) => (
   <span className="stars">
     {[1, 2, 3, 4, 5].map((n) => (
       <button key={n} className={n <= value ? 'on' : ''} onClick={() => onChange(n)} aria-label={`${n} stars`}>★</button>
     ))}
+    {value > 0 && onClear && <button className="clear" onClick={onClear}>Clear</button>}
   </span>
 );
 

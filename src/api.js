@@ -132,6 +132,30 @@ export const browse = (kind, page = 1, genre = null, flavor = null) => {
   return trending('all', page);
 };
 
+// Mood and format rows, like Netflix's "Short episodes" or "Feel-good". Each is a Discover query, movies and shows mixed.
+export const COLLECTIONS = [
+  ['top10', 'Top 10 this week'], ['short', 'Short episodes'], ['quick', 'Movies under 90 minutes'],
+  ['feelgood', 'Feel-good'], ['edge', 'Edge of your seat'], ['acclaimed', 'Critically acclaimed'],
+];
+const interleave = (a, b) => {
+  const out = [];
+  for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); }
+  return out;
+};
+const disc = (type, page, params) => tmdb(`/discover/${type}`, { page, sort_by: 'popularity.desc', ...params }).then((r) => list(r, type));
+const both = (page, movie, tv) => Promise.all([disc('movie', page, movie), disc('tv', page, tv)]).then(([m, t]) => interleave(m, t));
+export const collection = (id, page = 1) => {
+  switch (id) {
+    case 'top10': return tmdb('/trending/all/week').then((r) => list(r).slice(0, 10));
+    case 'short': return disc('tv', page, { 'with_runtime.lte': 30, 'vote_count.gte': 200, 'vote_average.gte': 6.5 });
+    case 'quick': return disc('movie', page, { 'with_runtime.gte': 60, 'with_runtime.lte': 90, 'vote_count.gte': 300, 'vote_average.gte': 6.5 });
+    case 'feelgood': return both(page, { with_genres: '35|10751|10749', 'vote_average.gte': 7, 'vote_count.gte': 500 }, { with_genres: '35', 'vote_average.gte': 7.5, 'vote_count.gte': 200 });
+    case 'edge': return both(page, { with_genres: '53|9648', 'vote_average.gte': 6.8, 'vote_count.gte': 500 }, { with_genres: '9648', 'vote_average.gte': 7.2, 'vote_count.gte': 200 });
+    case 'acclaimed': return both(page, { 'vote_average.gte': 8, 'vote_count.gte': 2000 }, { 'vote_average.gte': 8.3, 'vote_count.gte': 800 });
+    default: return Promise.resolve([]);
+  }
+};
+
 // US rating: MPAA (G, PG, PG-13, R, NC-17) for movies, TV Parental Guidelines (TV-Y … TV-MA) for series.
 // Falls back to another country's rating when no US one is on file.
 function certification(r, type) {
