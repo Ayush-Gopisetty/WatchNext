@@ -6,7 +6,9 @@ const LS = 'watchnext_v1';
 const load = () => {
   try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; }
 };
-let state = { items: {}, spoilerShield: true, ...load() };
+// `removed` maps key -> time it was removed. Deletions are synced as timestamped markers ("tombstones")
+// rather than missing rows, so a device holding an old copy can't upload a removed title again.
+let state = { items: {}, removed: {}, spoilerShield: true, ...load() };
 const subs = new Set();
 const set = (patch) => {
   state = { ...state, ...patch };
@@ -33,7 +35,9 @@ function upsert(item, patch) {
     eps: {}, addedAt: Date.now(),
   };
   const next = { ...prev, ...patch, updatedAt: Date.now() };
-  set({ items: { ...state.items, [item.key]: next } });
+  const removed = { ...state.removed };
+  delete removed[item.key]; // re-adding a removed title brings it back everywhere (it's newer than the marker)
+  set({ items: { ...state.items, [item.key]: next }, removed });
   push(next);
 }
 
@@ -46,25 +50,34 @@ function push(it) {
     .then(({ error }) => error && console.warn('sync failed', error.message));
 }
 
-// On sign-in: merge cloud + local by newest updatedAt, then push anything local that's newer.
+// What a removal looks like in the cloud. Carries harmless defaults so older app versions that don't know
+// about markers treat it as an empty, untracked title rather than crashing on missing fields.
+const tombstone = (key, at) => ({ key, removed: true, updatedAt: at, genres: [], eps: {} });
+const localTime = (key) => Math.max(state.items[key]?.updatedAt || 0, state.removed[key] || 0);
+
+// Apply one cloud record if it's newer than what this device knows. Returns true if anything changed.
+function applyRemote(remote, items, removed) {
+  const t = remote.updatedAt || 0;
+  if (t <= Math.max(items[remote.key]?.updatedAt || 0, removed[remote.key] || 0)) return false;
+  if (remote.removed) { delete items[remote.key]; removed[remote.key] = t; } else { items[remote.key] = remote; delete removed[remote.key]; }
+  return true;
+}
+
+// On sign-in: merge cloud + local by newest updatedAt (removals included), then push anything local that's newer.
 export async function signedIn(user) {
   userId = user.id;
   startRealtime(user.id);
   const { data, error } = await supabase.from('library_items').select('data');
   if (error) return console.warn('sync failed', error.message);
-  const merged = { ...state.items };
-  for (const { data: remote } of data) {
-    const local = merged[remote.key];
-    if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) merged[remote.key] = remote;
-  }
-  const remoteMap = Object.fromEntries(data.map((r) => [r.data.key, r.data]));
-  set({ items: merged });
-  Object.values(merged).forEach((it) => {
-    if (!remoteMap[it.key] || (it.updatedAt || 0) > (remoteMap[it.key].updatedAt || 0)) push(it);
-  });
+  const items = { ...state.items }, removed = { ...state.removed };
+  data.forEach(({ data: remote }) => applyRemote(remote, items, removed));
+  set({ items, removed });
+  const cloud = Object.fromEntries(data.map((r) => [r.data.key, r.data.updatedAt || 0]));
+  Object.values(items).forEach((it) => { if ((it.updatedAt || 0) > (cloud[it.key] ?? -1)) push(it); });
+  Object.entries(removed).forEach(([k, at]) => { if (at > (cloud[k] ?? -1)) push(tombstone(k, at)); });
 }
 // On sign-out wipe the local copy so the next person on this browser doesn't inherit it.
-export function signedOut() { userId = null; stopRealtime(); set({ items: {} }); }
+export function signedOut() { userId = null; stopRealtime(); set({ items: {}, removed: {} }); }
 
 // Live updates: changes made on another device arrive here within a moment.
 let channel = null;
@@ -80,9 +93,9 @@ function startRealtime(uid) {
       }
       const remote = p.new?.data;
       if (!remote) return;
-      const local = state.items[remote.key];
       // our own writes echo back with the same updatedAt, so only strictly newer data is applied
-      if (!local || (remote.updatedAt || 0) > (local.updatedAt || 0)) set({ items: { ...state.items, [remote.key]: remote } });
+      const items = { ...state.items }, removed = { ...state.removed };
+      if (applyRemote(remote, items, removed)) set({ items, removed });
     })
     .subscribe();
 }
@@ -118,8 +131,17 @@ export const actions = {
   remove(key) {
     const items = { ...state.items };
     delete items[key];
-    set({ items });
-    if (supabase && userId) supabase.from('library_items').delete().eq('key', key).then(() => {});
+    const at = Math.max(Date.now(), localTime(key) + 1);
+    set({ items, removed: { ...state.removed, [key]: at } });
+    push(tombstone(key, at));
+  },
+  // Undo for remove(): put the exact old record back, stamped as the newest version.
+  restore(it) {
+    const next = { ...it, updatedAt: Math.max(Date.now(), localTime(it.key) + 1) };
+    const removed = { ...state.removed };
+    delete removed[it.key];
+    set({ items: { ...state.items, [it.key]: next }, removed });
+    push(next);
   },
   setShield(v) { set({ spoilerShield: v }); },
 };
